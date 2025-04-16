@@ -1,0 +1,66 @@
+:global filename "sms_queue.txt"
+
+# Controleer of het bestand bestaat
+:if ([/file find name=$filename] != "") do={
+  :global content [/file get $filename contents]
+  :global contentLen [:len $content]
+
+  :global lineEnd 0
+  :global line ""
+  :global lastEnd 0
+  :global newContent ""
+
+  # Loop door het bestand tot het einde is bereikt
+  :while ($lastEnd < $contentLen) do={
+    # Zoek de volgende regelafbreking
+    :set lineEnd [:find $content "\r\n" $lastEnd]
+
+    # Als er geen regelafbreking meer is, gebruik dan het einde van het bestand
+    :if ([:len $lineEnd] = 0) do={
+      :set lineEnd $contentLen
+    }
+
+    # Haal de huidige regel op tussen de vorige en de volgende regelafbreking
+    :set line [:pick $content $lastEnd $lineEnd]
+
+    # :log info ("Processing line starting at character " . $lastEnd . " with length " . ($lineEnd - $lastEnd))
+    # :log info ("ContentLength " . $contentLen . "   LineEnd " . $lineEnd . "   LastEnd". $lastEnd)
+	 
+    :set lastEnd ($lineEnd + 2)
+
+    # Verwerk de regel als deze niet leeg is
+    :if ($line != "") do={
+      # Zoek de scheiding tussen het telefoonnummer en het bericht
+      :global parts [:find $line "\t"]
+      
+      # Controleer of er een scheiding is gevonden
+      :if ([:len $parts] > 0) do={
+        :global phoneNumber [:pick $line 0 $parts]
+        :global message [:pick $line ($parts + 1) [:len $line]]
+
+        :log info ("Sending SMS to " . $phoneNumber . " with message: " . $message)
+
+        :global success false
+
+        :do {
+          /tool sms send port=lte1 phone-number=$phoneNumber message=$message
+          :set success true
+          :delay 5s; # Wacht even om er zeker van te zijn dat de sms is verzonden
+        } on-error={
+          :log error ("Error sending SMS to " . $phoneNumber . ": " . $error)
+        }
+
+        # Als de sms niet is verzonden, voeg de regel dan toe aan het nieuwe bestand
+        :if ($success = false) do={
+          :set newContent ($newContent . $line)
+          :if ($lastEnd < $contentLen) do={
+            :set newContent ($newContent . "\n")
+          }
+        }
+      }
+    }
+  }
+
+  # Vervang het oude bestand door het bijgewerkte bestand
+  /file set [find name=$filename] contents=$newContent
+}
