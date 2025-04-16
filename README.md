@@ -38,15 +38,17 @@ On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telne
 1. Add a RAM disk (recommended)
 ```/disk/add type=tmpfs tmpfs-max-size=64M slot=ram```
 
-2. 2. Add environment variables
-```/container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_URL value="http://localhost"
+2. Add environment variables
+```
+/container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_URL value="http://localhost"
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_USER value="sms_user"
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_PASS value="xxxxxxxxx"
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_QUEUE_FILE value="sms_queue.txt"
 /container/envs/add name=ENV_SMS_GATEWAY key=ALLOWED_IP_RANGES value="192.168.0.0/21,192.168.10.0/24"
 /container/envs/add name=ENV_SMS_GATEWAY key=ONLY_DUTCH value="true"
 /container/envs/add name=ENV_SMS_GATEWAY key=LOG_TO_FILE value="false"
-/container/envs/add name=ENV_SMS_GATEWAY key=SMS_LOG_FILE value="/tmp/sms.log"```
+/container/envs/add name=ENV_SMS_GATEWAY key=SMS_LOG_FILE value="/tmp/sms.log"
+```
 
 3. Set registry URL
 ```/container/config/set registry-url=registry.hub.docker.com```
