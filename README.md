@@ -8,6 +8,7 @@ You can host the `sendsms.php` file on a standard PHP server, or run it as a Doc
 
 ---
 
+
 ## How it works
 
 - Messages are sent using `/tool sms send`.
@@ -17,6 +18,7 @@ You can host the `sendsms.php` file on a standard PHP server, or run it as a Doc
 - IP range restrictions and number validation (e.g. Only allow Dutch phone numbers) are enforced.
 
 --
+
 
 ## Option 1: Use with a regular PHP webhost
 
@@ -30,6 +32,7 @@ Send SMS via HTTP POST (JSON or form data):
   "text": "Test message"
 }
 ```
+
 
 ## Option 2: Use Docker on MikroTik (RouterOS v7+)
 
@@ -63,8 +66,10 @@ On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telne
 ```
 
 
+
 ## Docker Image
 Image available on Docker Hub: https://hub.docker.com/r/roeller/mikrotik-sms-gateway
+
 
 ### Environment Variables
 |Variable|Description|
@@ -78,6 +83,7 @@ Image available on Docker Hub: https://hub.docker.com/r/roeller/mikrotik-sms-gat
 |LOG_TO_FILE|true = write to file, false = echo to stdout (Docker logs)
 SMS_LOG_FILE|Path to log file (used if LOG_TO_FILE=true)
 
+
 ## MikroTik Scheduler Script
 A scheduler task on the router:
 - Checks sms_queue.txt
@@ -86,17 +92,21 @@ A scheduler task on the router:
 
 The PHP backend adds messages to the queue when needed.
 
+
 ## Requirements
 - MikroTik device with RouterOS 7+
 - Container package installed
 - LTE modem (for sending SMS), like Mikrotik WAP (ac) LTE Kit
 - PHP 8.1+ (if running outside Docker)
 
+
 ## License
 This project is licensed under the MIT License.
 
+
 ## Maintainer
 This project is maintained by Roel Broersma | https://github.com/roelbroersma
+
 
 ## Contribute
 Feel free to contribute!
