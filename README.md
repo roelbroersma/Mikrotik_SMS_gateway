@@ -20,7 +20,7 @@ You can host the `sendsms.php` file on a standard PHP server, or run it as a Doc
 --
 
 
-## Option 1: Use with a regular PHP webhost
+### Option 1: Use with a regular PHP webhost
 
 Just upload `sendsms.php` to any server with PHP 8.0+.
 
@@ -34,7 +34,7 @@ Send SMS via HTTP POST (JSON or form data):
 ```
 
 
-## Option 2: Use Docker on MikroTik (RouterOS v7+)
+### Option 2: Use Docker on MikroTik (RouterOS v7+)
 
 On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telnet):
 
