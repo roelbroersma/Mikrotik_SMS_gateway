@@ -12,3 +12,4 @@ COPY sendsms.php .
 
 EXPOSE 80
 CMD ["lighttpd", "-D", "-f", "/etc/lighttpd/lighttpd.conf"]
+
