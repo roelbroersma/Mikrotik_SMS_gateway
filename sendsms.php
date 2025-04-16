@@ -18,7 +18,7 @@ $sms_gateway_pass 		= getenv('SMS_GATEWAY_PASS')		?: 'api_password_of_mikrotik';
 $sms_queue_file   		= getenv('SMS_QUEUE_FILE')			?: 'sms_queue.txt';						// THE FILE ON THE MIKROTIK ROUTER TO WHICH SMS ARE SAVED WHEN THEY COULD NOT BE SEND (EG. LTE IS DOWN)
 $allowed_ip_ranges_raw	= getenv('ALLOWED_IP_RANGES')		?: '192.168.0.0/21,192.168.10.0/24';	// ALLOW ONLY FROM THESE IPV4 CIDR RANGES (SEPARATE MULTIPLE RANGES BY A COMMA)
 $only_dutch				= strtolower(getenv('ONLY_DUTCH')	?: 'true') === 'true';					// SET TO TRUE TO ONLY SEND TO DUTCH +316xxxxxxx NUMBERS
-$log_to_file			= strtolower(getenv('LOG_TO_FILE')	?: 'true') === 'true';					// SET TO TRUE TO LOG (DOCKER TO STDOUT, OTHERWISE TO FILE)
+$log_to_file			= strtolower(getenv('LOG_TO_FILE')	?: 'true') === 'true';					// SET TO TRUE TO LOG TO FILE (IF ON DOCKER, IT WILL NOT LOG TO FILE BUT TO STDOUT)
 $sms_log_file			= getenv('SMS_LOG_FILE')			?: 'sms_logfile.log';					// IF NOT ON DOCKER, AND THE ABOVE LINE IS TRUE, LOG TO THIS FILE
 
 
