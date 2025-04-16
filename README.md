@@ -17,7 +17,7 @@ You can host the `sendsms.php` file on a standard PHP server, or run it as a Doc
 - Remote clients use `sendsms.php` to submit SMS messages via HTTP POST.
 - IP range restrictions and number validation (e.g. Only allow Dutch phone numbers) are enforced.
 
---
+---
 
 
 ### Option 1: Use with a regular PHP webhost
