@@ -36,9 +36,11 @@ Send SMS via HTTP POST (JSON or form data):
 On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telnet):
 
 1. Add a RAM disk (recommended)
-```/disk/add type=tmpfs tmpfs-max-size=64M slot=ram```
+```
+/disk/add type=tmpfs tmpfs-max-size=64M slot=ram
+```
 
-2. Add environment variables
+3. Add environment variables
 ```
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_URL value="http://localhost"
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_USER value="sms_user"
@@ -51,10 +53,14 @@ On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telne
 ```
 
 3. Set registry URL
-```/container/config/set registry-url=registry.hub.docker.com```
+```
+/container/config/set registry-url=registry.hub.docker.com
+```
 
-4. Add the container
-```/container/add remote-image=roeller/mikrotik-sms-gateway interface=veth1 root-dir=ram/sms-gateway envlist=ENV_SMS_GATEWAY name=sms-gateway```
+5. Add the container
+```
+/container/add remote-image=roeller/mikrotik-sms-gateway interface=veth1 root-dir=ram/sms-gateway envlist=ENV_SMS_GATEWAY name=sms-gateway
+```
 
 
 ## Docker Image
