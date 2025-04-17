@@ -37,7 +37,7 @@ Send SMS via HTTP POST (JSON or form data):
 ```
 
 
-### Option 2: Use Docker on MikroTik (RouterOS v7+)
+### Option 2: Use Docker on MikroTik (RouterOS v7+) to host the PHP file!
 
 On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telnet):
 
