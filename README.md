@@ -47,7 +47,7 @@ On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telne
 ```
 which asks you to press the reset or power button. This is just for security purposes so a hacker can not easily add the container package and do whatever he wants.
 
-3. Create a veth1 interface and add it to the Bridge
+2. Create a veth1 interface and add it to the Bridge
 ```
 /interface/veth/add name=veth1 address=192.168.0.100/24 gateway=192.168.0.254
 /interface/bridge/port add bridge=bridge interface=veth1
