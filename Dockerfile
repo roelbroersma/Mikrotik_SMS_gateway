@@ -1,7 +1,7 @@
 # Alpine with PHP CLI (built-in server)
 # Using Alpine 3.21 (or latest stable)
 FROM alpine:3.21
-RUN apk add --no-cache php81
+RUN apk add --no-cache php82-cli
 
 # Set up document root and copy PHP script
 WORKDIR /var/www
