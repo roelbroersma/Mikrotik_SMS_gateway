@@ -1,3 +1,7 @@
+################################################################
+### SCHEDULE THIS SCRIPT EVERY MINUTE TO CHECK THE SMS QUEUE ###
+################################################################
+
 :global filename "sms_queue.txt"
 
 # Controleer of het bestand bestaat
