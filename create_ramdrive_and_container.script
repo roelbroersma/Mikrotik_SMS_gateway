@@ -1,0 +1,56 @@
+###############################################################################
+### SCHEDULE THIS SCRIPT EVERY 5 MINUTES TO CHECK FOR THE CONTAINER         ###
+### IT WILL CREATE THE RAM DRIVE AND CONTAINER AFTER REBOOT OR WHEN STOPPED ###
+###############################################################################
+
+:delay 60s
+
+# Check for an active container
+:local runningContainers [/container/print count-only where status="running"]
+:if ($runningContainers > 0) do={
+    :return
+}
+
+# Stop and remove old container if it exists
+:local existingContainer [/container/find where name="sms-gateway"]
+:if ($existingContainer != "") do={
+    /container/stop $existingContainer
+    :delay 10s
+    /container/remove $existingContainer
+    :delay 5s
+}
+
+# Remove ram drive (if exists)
+:if ([/disk/find where slot="ram"] != "") do={
+    /disk/remove [find where slot="ram"]
+    :log info "RAM drive removed."
+    :delay 2s
+}
+
+# Create new RAM drive
+/disk/add type=tmpfs tmpfs-max-size=50M slot=ram
+:log info "RAM drive created."
+:delay 2s
+
+# Add Container
+/container/add remote-image=roeller/mikrotik-sms-gateway \
+  interface=veth1 \
+  root-dir=ram/sms-gateway \
+  envlist=ENV_SMS_GATEWAY \
+  name=sms-gateway
+:log info "Container created."
+
+# Wait until container is not in "extracting" mode anymore
+:local status ""
+:do {
+    :set status [/container/get [find where name="sms-gateway"] value-name=status]
+    :log info ("Container status: " . $status)
+    :delay 2s
+} while=($status = "extracting")
+
+# Wait 10 seconds more...
+:delay 10s
+
+# Start the container
+/container/start [find where name="sms-gateway"]
+:log info "Container sms-gateway started."
