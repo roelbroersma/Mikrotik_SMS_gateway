@@ -1,5 +1,6 @@
 # Alpine with PHP CLI (built-in server)
-FROM alpine:3.19  # or latest stable
+# Using Alpine 3.19 (or latest stable)
+FROM alpine:3.19
 RUN apk add --no-cache php81
 
 # Set up document root and copy PHP script
