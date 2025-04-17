@@ -13,4 +13,4 @@ COPY sendsms.php /var/www/
 
 # Expose port 80 and start PHP built-in server on 0.0.0.0:80
 EXPOSE 80
-CMD ["php81", "-S", "0.0.0.0:80", "-t", "/var/www"]
+CMD ["php82", "-S", "0.0.0.0:80", "-t", "/var/www"]
