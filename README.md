@@ -60,16 +60,17 @@ On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telne
 
 3. You can do the rest manually (step 4, 5 and 6) or just do this step 3 (which will do it always automatically for you!)
 If you do it manually, you have to do this every time you reboot the router.
+
 Download the script Create_ramdrive_and_docker.script and schedule it to run every 5 minutes... that's it!
 
 
-5. Add a RAM disk (recommended)
+5. Add a RAM disk (recommended) (only when doing manually)
 ```
 /disk/add type=tmpfs tmpfs-max-size=64M slot=ram
 ```
 
 
-5. Add the container
+6. Add the container (only when doing manually)
 ```
 /container/add remote-image=roeller/mikrotik-sms-gateway interface=veth1 root-dir=ram/sms-gateway envlist=ENV_SMS_GATEWAY name=sms-gateway
 ```
