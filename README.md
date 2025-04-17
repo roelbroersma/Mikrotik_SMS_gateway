@@ -37,16 +37,16 @@ Send SMS via HTTP POST (JSON or form data):
 ```
 
 
+### Option 2: Use Docker on MikroTik (RouterOS v7+) - AUTOMATIC
+
+
+
+
 ### Option 2: Use Docker on MikroTik (RouterOS v7+)
 
 On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telnet):
 
-1. Add a RAM disk (recommended)
-```
-/disk/add type=tmpfs tmpfs-max-size=64M slot=ram
-```
-
-3. Add environment variables
+1. Add environment variables
 ```
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_URL value="http://localhost"
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_USER value="sms_user"
@@ -58,14 +58,30 @@ On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telne
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_LOG_FILE value="/tmp/sms.log"
 ```
 
-3. Set registry URL
+2. Set registry URL
 ```
 /container/config/set registry-url=registry.hub.docker.com
 ```
 
+3. You can do the rest manually (step 4, 5 and 6) or just do this step 3 (which will do it always automatically for you!)
+If you do it manually, you have to do this every time you reboot the router.
+Download the script Create_ramdrive_and_docker.script and schedule it to run every 5 minutes... that's it!
+
+
+5. Add a RAM disk (recommended)
+```
+/disk/add type=tmpfs tmpfs-max-size=64M slot=ram
+```
+
+
 5. Add the container
 ```
 /container/add remote-image=roeller/mikrotik-sms-gateway interface=veth1 root-dir=ram/sms-gateway envlist=ENV_SMS_GATEWAY name=sms-gateway
+```
+
+6. Start the container
+```
+/container/start number=0
 ```
 
 ---
