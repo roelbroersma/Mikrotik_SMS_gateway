@@ -64,13 +64,13 @@ If you do it manually, you have to do this every time you reboot the router.
 Download the script Create_ramdrive_and_docker.script and schedule it to run every 5 minutes... that's it!
 
 
-5. Add a RAM disk (recommended) (only when doing manually)
+4. Add a RAM disk (recommended) (only when doing manually)
 ```
 /disk/add type=tmpfs tmpfs-max-size=64M slot=ram
 ```
 
 
-6. Add the container (only when doing manually)
+5. Add the container (only when doing manually)
 ```
 /container/add remote-image=roeller/mikrotik-sms-gateway interface=veth1 root-dir=ram/sms-gateway envlist=ENV_SMS_GATEWAY name=sms-gateway
 ```
