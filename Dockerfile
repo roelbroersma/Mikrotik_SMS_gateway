@@ -6,4 +6,4 @@ WORKDIR /app
 COPY sendsms.php .
 
 EXPOSE 80
-CMD ["php81", "-S", "0.0.0.0:80", "sendsms.php"]
+CMD ["php81", "-S", "0.0.0.0:80"]
