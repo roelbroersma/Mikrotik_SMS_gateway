@@ -41,7 +41,19 @@ Send SMS via HTTP POST (JSON or form data):
 
 On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telnet):
 
-1. Add environment variables
+1. Add the 'container' package (download it from the mikrotik website and upload and activate it on the router). To activate it you need physical access to the router because after uploading and installing the package, you need to type:
+```
+/system/device-mode/update container=yes
+```
+which asks you to press the reset or power button. This is just for security purposes so a hacker can not easily add the container package and do whatever he wants.
+
+3. Create a veth1 interface and add it to the Bridge
+```
+/interface/veth/add name=veth1 address=192.168.0.100/24 gateway=192.168.0.254
+/interface/bridge/port add bridge=bridge interface=veth1
+```
+
+3. Add environment variables
 ```
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_URL value="http://localhost"
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_USER value="sms_user"
@@ -53,29 +65,29 @@ On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telne
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_LOG_FILE value="/tmp/sms.log"
 ```
 
-2. Set registry URL
+3. Set registry URL
 ```
 /container/config/set registry-url=registry.hub.docker.com
 ```
 
-3. You can do the rest manually (step 4, 5 and 6) or just do this step 3 (which will do it always automatically for you!)
+4. You can do the rest manually (step 4, 5 and 6) or just do this step 3 (which will do it always automatically for you!)
 If you do it manually, you have to do this every time you reboot the router.
 
 Download the script Create_ramdrive_and_docker.script and schedule it to run every 5 minutes... that's it!
 
 
-4. Add a RAM disk (recommended) (only when doing manually)
+5. Add a RAM disk (recommended) (only when doing manually)
 ```
 /disk/add type=tmpfs tmpfs-max-size=64M slot=ram
 ```
 
 
-5. Add the container (only when doing manually)
+6. Add the container (only when doing manually)
 ```
 /container/add remote-image=roeller/mikrotik-sms-gateway interface=veth1 root-dir=ram/sms-gateway envlist=ENV_SMS_GATEWAY name=sms-gateway
 ```
 
-6. Start the container
+7. Start the container
 ```
 /container/start number=0
 ```
