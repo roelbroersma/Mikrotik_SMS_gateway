@@ -1,10 +1,13 @@
 # MikroTik SMS Gateway
 
 A lightweight SMS gateway for MikroTik routers with LTE and RouterOS 7+ support.
-It uses a scheduler script on the MikroTik to check a local SMS queue (in case the LTE interface is down) and send SMS messages via `/tool sms send`.
-A PHP backend (`sendsms.php`) allows secure, remote SMS requests.
+When an SMS could not be send it will queue it on the Mikrotik router (using a text file). This SMS gateway is made because the default Mikrotik API is not that userfriendly.
 
-You can host the `sendsms.php` file on a standard PHP server, or run it as a Docker container — even directly on the MikroTik router!
+You can run the php script on a server but if you want a one-in-all solution, it can run on the Mikrotik router!
+How does that work? -> The Mikrotik router uses the 'Container' package and after each boot it will download this docker container in which it will host the PHP file (SMS Gateway).
+
+The Mikrotik router also uses a scheduler script to check if there is anything in the local SMS queue (in case the LTE interface was down) and send SMS messages via it's local API: `/tool sms send`.
+The PHP backend (`sendsms.php`) allows secure, remote SMS requests, it can be secured by a username/password and features an extra layer of checks and error messages ('Message too long' or 'Only Dutch numbers allowed').
 
 ---
 
@@ -65,7 +68,7 @@ On the Mikrotik device, do the following (via Windows->Terminal or via SSH/Telne
 /container/add remote-image=roeller/mikrotik-sms-gateway interface=veth1 root-dir=ram/sms-gateway envlist=ENV_SMS_GATEWAY name=sms-gateway
 ```
 
-
+---
 
 ## Docker Image
 Image available on Docker Hub: https://hub.docker.com/r/roeller/mikrotik-sms-gateway
@@ -84,6 +87,8 @@ Image available on Docker Hub: https://hub.docker.com/r/roeller/mikrotik-sms-gat
 SMS_LOG_FILE|Path to log file (used if LOG_TO_FILE=true)
 
 
+---
+
 ## MikroTik Scheduler Script
 A scheduler task on the router:
 - Checks sms_queue.txt
@@ -92,6 +97,7 @@ A scheduler task on the router:
 
 The PHP backend adds messages to the queue when needed.
 
+---
 
 ## Requirements
 - MikroTik device with RouterOS 7+
@@ -99,6 +105,7 @@ The PHP backend adds messages to the queue when needed.
 - LTE modem (for sending SMS), like Mikrotik WAP (ac) LTE Kit
 - PHP 8.1+ (if running outside Docker)
 
+---
 
 ## License
 This project is licensed under the MIT License.
