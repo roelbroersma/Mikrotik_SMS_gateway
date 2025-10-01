@@ -6,33 +6,40 @@
 :delay 60s
 
 # Check for an active container
-:local runningContainers [/container/print count-only where status="running"]
+:local runningContainers [/container/print count-only where running]
 :if ($runningContainers > 0) do={
     :quit
 }
 
+:log info "Starting script to stop/remove/add/start SMS container."
 # Stop and remove old container if it exists
 :local existingContainer [/container/find where name="sms-gateway"]
-:if ($existingContainer != "") do={
-    /container/stop $existingContainer
-    :delay 10s
-    /container/remove $existingContainer
-    :delay 5s
+:if ([:len $existingContainer] > 0) do={
+   :log info "Stopping existing Container."
+   :do { /container/stop $existingContainer } on-error={ :log warning "Couldn't stop container, might already be stopped." }
+   :delay 20s
+   :log info "Removing existing Container."
+   do { /container/remove $existingContainer } on-error={ :log warning "Couldn't remove container, might not be stopped." }
+   :delay 5s
+   :log info "Stopped and Removed finished. Continue script"
 }
 
 # Remove ram drive (if exists)
 :if ([/disk/find where slot="ram"] != "") do={
-    /disk/remove [find where slot="ram"]
+   :log info "Existing RAM Drive found, removing RAM drive."
+    /disk/remove [/disk/find where slot="ram"]
     :log info "RAM drive removed."
     :delay 2s
 }
 
 # Create new RAM drive
+:log info "Starting to create RAM drive."
 /disk/add type=tmpfs tmpfs-max-size=50M slot=ram
 :log info "RAM drive created."
 :delay 2s
 
 # Add Container
+:log info "Starting to create Container."
 /container/add remote-image=roeller/mikrotik-sms-gateway \
   interface=veth1 \
   root-dir=ram/sms-gateway \
@@ -41,12 +48,11 @@
 :log info "Container created."
 
 # Wait until container is not in "extracting" mode anymore
-:local status ""
-:do {
-    :set status [/container/get [find where name="sms-gateway"] value-name=status]
-    :log info ("Container status: " . $status)
+:while ([:len [/container/print where name="sms-gateway" and extracting ]] > 0) do={
+    :log info "Container still extracting..."
     :delay 2s
-} while=($status = "extracting")
+}
+:log info "Extracting finished."
 
 # Wait 10 seconds more...
 :delay 10s
