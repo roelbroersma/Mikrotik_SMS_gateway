@@ -12,6 +12,7 @@
  ########################################################################
  */
 
+/* Configuration loaded from environment variables with safe defaults */
 $sms_gateway_url 		= getenv('SMS_GATEWAY_URL')			?: 'http://localhost';					// THE LOCATION OF THE MIKROTIK DEVICE (E.G. WAP AC LTE KIT)
 $sms_gateway_user 		= getenv('SMS_GATEWAY_USER')		?: 'api_user_of_mikrotik';				// API USERNAME (TIP: CREATE A NEW MIKROTIK API USER)
 $sms_gateway_pass 		= getenv('SMS_GATEWAY_PASS')		?: 'api_password_of_mikrotik';			// API PASSWORD (TIP: CREATE A NEW MIKROTIK API USER)
@@ -22,7 +23,7 @@ $log_to_file			= strtolower(getenv('LOG_TO_FILE')	?: 'true') === 'true';					// 
 $sms_log_file			= getenv('SMS_LOG_FILE')			?: 'sms_logfile.log';					// IF NOT ON DOCKER, AND THE ABOVE LINE IS TRUE, LOG TO THIS FILE
 
 
-
+/* Accept input from form-data first, otherwise fall back to JSON body */
 if ( !empty($_POST['phone']) || !empty($_POST['text']) ) {
 	$phone	= trim($_POST['phone']);
 	$text	= trim($_POST['text']);
@@ -32,8 +33,8 @@ if ( !empty($_POST['phone']) || !empty($_POST['text']) ) {
 	$text	= trim($data['text']);
 }
 
+/* Allow only requests from configured IPv4 CIDR ranges */
 $ipaddr = $_SERVER['REMOTE_ADDR'];
-
 $allowed_ip_ranges = array_map('trim', explode(',', $allowed_ip_ranges_raw));
 $ip_allowed = false;
 foreach ($allowed_ip_ranges as $range) {
@@ -47,13 +48,23 @@ if (!$ip_allowed) {
 	return false;
 }
 
+/* Normalize phone input */
+$phone = preg_replace('/[\s\-]+/', '', $phone);
+if (preg_match('/^316\d{8}$/', $phone)) {
+	$phone = '+' . $phone;
+}
+if (preg_match('/^06\d{8}$/', $phone)) {
+	$phone = '+31' . substr($phone, 1);
+}
+
 if ( empty($phone) || empty($text) ) {
 	echo "NO VALID DATA SEND.";
 	return false;
 }
 
+/* Validate phone format and optionally restrict to Dutch mobile numbers */
 if ( !(preg_match("/^((\+)[0-9]{8,14})|([0]{1,1}[1-9]{1,1}[0-9]{8,8})|([0]{2,2}[0-9]{7,14})/i", $phone)) ) {
-	echo "NUMBER NOT SEND IN INTERNATIONAL FORMAT, i.e.: +3161234567";
+	echo "NUMBER NOT SEND IN INTERNATIONAL FORMAT, i.e.: +31612345678";
 	return false;
 }
 
@@ -71,7 +82,7 @@ if ( strlen($text)>160 ) {
 	
 $result = FALSE;
 
-
+/* Try to send the SMS directly through the MikroTik REST API */
 $url      = $sms_gateway_url . '/rest/tool/sms/send';
 $data     = array('port' => 'lte1', 'phone-number' => $phone, 'message' => $text);
 $json_data= json_encode($data);
@@ -90,6 +101,8 @@ $options = array(
 		);
 $context  = stream_context_create($options);
 $result   = file_get_contents($url, false, $context);
+
+/* If direct sending fails, append the message to the router-side queue file */
 if ($result === FALSE) {
 	// THERE IS SOME ERROR SENDING THE SMS, SAVE THE SMS ON THE SMS-GATEWAY SO IT WILL BE SEND AT A LATER TIME
 	// GET CURRENT SMS_QUEUE CONTENTS
@@ -161,7 +174,7 @@ function ip_in_range( $ip, $range ) {
 	return ( ( $ip_decimal & $netmask_decimal ) == ( $range_decimal & $netmask_decimal ) );
 }
 
-
+/* Write a log line either to file or stdout, depending on configuration */
 function write_to_log($text_to_log) {
 	global $log_to_file, $sms_log_file;
 
