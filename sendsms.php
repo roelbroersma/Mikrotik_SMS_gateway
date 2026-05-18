@@ -122,7 +122,31 @@ if ($result === FALSE) {
 	$sms_queue_result = file_get_contents($url, false, $context);
 
 	$json_sms_queue   = json_decode($sms_queue_result,true);
-	$sms_queue        = $json_sms_queue['contents'];
+    $sms_queue        = $json_sms_queue['contents'] ?? '';
+
+    // CREATE FILE IF IT DOESNT EXISTS
+    if ($sms_queue_result === false || !is_array($json_sms_queue)) {
+        $create_url = $sms_gateway_url . '/rest/file/add';
+        $create_data = array('name' => $sms_queue_file, 'contents' => '');
+        $create_json = json_encode($create_data);
+    
+        $create_options = array(
+            'http' => array(
+                'header' => "Authorization: Basic " . base64_encode("$sms_gateway_user:$sms_gateway_pass") . "\r\n" .
+                            "Content-type: application/json\r\n" .
+                            "Content-Length: " . strlen($create_json) . "\r\n",
+                'method' => 'POST',
+                'content' => $create_json
+            ),
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+            ),
+        );
+    
+        file_get_contents($create_url, false, stream_context_create($create_options));
+        $sms_queue = '';
+    }
 	if (strlen($sms_queue)>10)
 		$sms_queue = $sms_queue."\r\n";
 
