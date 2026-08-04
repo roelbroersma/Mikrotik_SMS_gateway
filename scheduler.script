@@ -16,21 +16,26 @@
 
   # Loop door het bestand tot het einde is bereikt
   :while ($lastEnd < $contentLen) do={
-    # Zoek de volgende regelafbreking
-    :set lineEnd [:find $content "\r\n" $lastEnd]
+    # Search for LF; this supports both LF and CRLF queue files
+    :set lineEnd [:find $content "\n" $lastEnd]
 
     # Als er geen regelafbreking meer is, gebruik dan het einde van het bestand
-    :if ([:len $lineEnd] = 0) do={
+    :if ([:typeof $lineEnd] = "nil") do={
       :set lineEnd $contentLen
     }
 
     # Haal de huidige regel op tussen de vorige en de volgende regelafbreking
     :set line [:pick $content $lastEnd $lineEnd]
 
+    # Remove the remaining CR when the file uses CRLF
+    :if (([:len $line] > 0) && ([:pick $line ([:len $line] - 1) [:len $line]] = "\r")) do={
+      :set line [:pick $line 0 ([:len $line] - 1)]
+    }
+
     # :log info ("Processing line starting at character " . $lastEnd . " with length " . ($lineEnd - $lastEnd))
     # :log info ("ContentLength " . $contentLen . "   LineEnd " . $lineEnd . "   LastEnd". $lastEnd)
 	 
-    :set lastEnd ($lineEnd + 2)
+    :set lastEnd ($lineEnd + 1)
 
     # Verwerk de regel als deze niet leeg is
     :if ($line != "") do={
@@ -51,15 +56,16 @@
           :set success true
           :delay 5s; # Wacht even om er zeker van te zijn dat de sms is verzonden
         } on-error={
-          :log error ("Error sending SMS to " . $phoneNumber . ": " . $error)
+          :log error ("Error sending SMS to " . $phoneNumber)
         }
 
         # Als de sms niet is verzonden, voeg de regel dan toe aan het nieuwe bestand
         :if ($success = false) do={
-          :set newContent ($newContent . $line)
-          :if ($lastEnd < $contentLen) do={
+          # Add LF only between failed records
+          :if ([:len $newContent] > 0) do={
             :set newContent ($newContent . "\n")
           }
+          :set newContent ($newContent . $line)
         }
       }
     }

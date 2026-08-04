@@ -18,6 +18,7 @@ $sms_gateway_user 		= getenv('SMS_GATEWAY_USER')		?: 'api_user_of_mikrotik';				
 $sms_gateway_pass 		= getenv('SMS_GATEWAY_PASS')		?: 'api_password_of_mikrotik';			// API PASSWORD (TIP: CREATE A NEW MIKROTIK API USER)
 $sms_queue_file   		= getenv('SMS_QUEUE_FILE')			?: 'sms_queue.txt';						// THE FILE ON THE MIKROTIK ROUTER TO WHICH SMS ARE SAVED WHEN THEY COULD NOT BE SEND (EG. LTE IS DOWN)
 $allowed_ip_ranges_raw	= getenv('ALLOWED_IP_RANGES')		?: '192.168.0.0/21,192.168.10.0/24';	// ALLOW ONLY FROM THESE IPV4 CIDR RANGES (SEPARATE MULTIPLE RANGES BY A COMMA)
+$rate_limits_raw		= getenv('RATE_LIMITS')			?: '*:10/600';						// PER-IP LIMITS: IP_OR_CIDR:MAX/SECONDS, COMMA SEPARATED; USE "OFF" TO DISABLE
 $only_dutch				= strtolower(getenv('ONLY_DUTCH')	?: 'true') === 'true';					// SET TO TRUE TO ONLY SEND TO DUTCH +316xxxxxxx NUMBERS
 $log_to_file			= strtolower(getenv('LOG_TO_FILE')	?: 'true') === 'true';					// SET TO TRUE TO LOG TO FILE (IF ON DOCKER, IT WILL NOT LOG TO FILE BUT TO STDOUT)
 $sms_log_file			= getenv('SMS_LOG_FILE')			?: 'sms_logfile.log';					// IF NOT ON DOCKER, AND THE ABOVE LINE IS TRUE, LOG TO THIS FILE
@@ -25,13 +26,16 @@ $sms_log_file			= getenv('SMS_LOG_FILE')			?: 'sms_logfile.log';					// IF NOT O
 
 /* Accept input from form-data first, otherwise fall back to JSON body */
 if ( !empty($_POST['phone']) || !empty($_POST['text']) ) {
-	$phone	= trim($_POST['phone']);
-	$text	= trim($_POST['text']);
+	$phone	= trim($_POST['phone'] ?? '');
+	$text	= trim($_POST['text'] ?? '');
 } else {
 	$data	= json_decode(file_get_contents('php://input'), true);
-	$phone	= trim($data['phone']);
-	$text	= trim($data['text']);
+	$phone	= trim($data['phone'] ?? '');
+	$text	= trim($data['text'] ?? '');
 }
+
+/* Queue records are line-based, so tabs and line breaks cannot remain in a message */
+$text = preg_replace('/[\r\n\t]+/', ' ', $text);
 
 /* Allow only requests from configured IPv4 CIDR ranges */
 $ipaddr = $_SERVER['REMOTE_ADDR'];
@@ -44,7 +48,40 @@ foreach ($allowed_ip_ranges as $range) {
 	}
 }
 if (!$ip_allowed) {
+	http_response_code(403);
+	write_to_log("REJECTED: IP address is not allowed");
 	echo "NOT ALLOWED! THIS REQUEST IS LOGGED.";
+	return false;
+}
+
+/* Apply a rolling per-IP rate limit stored only in APCu shared memory */
+try {
+	$rate_limit = get_rate_limit_for_ip($ipaddr, $rate_limits_raw);
+	if ($rate_limit !== false) {
+		$rate_status = consume_rate_limit($ipaddr, $rate_limit['max'], $rate_limit['seconds']);
+		if (isset($rate_status['error'])) {
+			http_response_code(503);
+			write_to_log("RATE LIMIT ERROR: " . $rate_status['error']);
+			echo "RATE LIMITER UNAVAILABLE.";
+			return false;
+		}
+
+		header("X-RateLimit-Limit: " . $rate_limit['max']);
+		header("X-RateLimit-Remaining: " . $rate_status['remaining']);
+		header("X-RateLimit-Reset: " . $rate_status['reset']);
+
+		if (!$rate_status['allowed']) {
+			http_response_code(429);
+			header("Retry-After: " . $rate_status['retry_after']);
+			write_to_log("RATE LIMITED: max " . $rate_limit['max'] . " requests per " . $rate_limit['seconds'] . " seconds");
+			echo "RATE LIMIT EXCEEDED. TRY AGAIN IN " . $rate_status['retry_after'] . " SECONDS.";
+			return false;
+		}
+	}
+} catch (InvalidArgumentException $exception) {
+	http_response_code(500);
+	write_to_log("RATE LIMIT CONFIG ERROR: " . $exception->getMessage());
+	echo "INVALID RATE_LIMITS CONFIGURATION.";
 	return false;
 }
 
@@ -63,13 +100,13 @@ if ( empty($phone) || empty($text) ) {
 }
 
 /* Validate phone format and optionally restrict to Dutch mobile numbers */
-if ( !(preg_match("/^((\+)[0-9]{8,14})|([0]{1,1}[1-9]{1,1}[0-9]{8,8})|([0]{2,2}[0-9]{7,14})/i", $phone)) ) {
+if ( !(preg_match("/^(\+[0-9]{8,14}|0[1-9][0-9]{8}|00[0-9]{7,14})$/", $phone)) ) {
 	echo "NUMBER NOT SEND IN INTERNATIONAL FORMAT, i.e.: +31612345678";
 	return false;
 }
 
-if ( $only_dutch && !(preg_match("/^((\+)(316)[0-9]{7,7})/i", $phone)) ) {
-	echo "ONLY DUTCH INTERNATIONAL MOBILE NUMBERS ARE ALLOWED, i.e.: +3161234567";
+if ( $only_dutch && !(preg_match("/^\+316[0-9]{8}$/", $phone)) ) {
+	echo "ONLY DUTCH INTERNATIONAL MOBILE NUMBERS ARE ALLOWED, i.e.: +31612345678";
 	return false;
 }
 
@@ -147,8 +184,11 @@ if ($result === FALSE) {
         file_get_contents($create_url, false, stream_context_create($create_options));
         $sms_queue = '';
     }
-	if (strlen($sms_queue)>10)
-		$sms_queue = $sms_queue."\r\n";
+	/* Normalize old CRLF/CR queues and always store one record per LF line */
+	$sms_queue = str_replace(array("\r\n", "\r"), "\n", $sms_queue);
+	$sms_queue = trim($sms_queue, "\n");
+	if ($sms_queue !== '')
+		$sms_queue = $sms_queue."\n";
 
 	// SET NEW SMS_QUEUE
 	$url      = $sms_gateway_url . '/rest/file/set';
@@ -169,6 +209,12 @@ if ($result === FALSE) {
 			);
 	$context  = stream_context_create($options);
 	$result = file_get_contents($url, false, $context);
+	if ($result === FALSE) {
+		http_response_code(502);
+		echo "SMS COULD NOT BE QUEUED.";
+		write_to_log ("QUEUE FAILED: " .$phone." - ".$text);
+		return false;
+	}
 
 	echo "SMS SUCCESSFULLY QUEUED.";
 	write_to_log ("QUEUED: " .$phone." - ".$text);
@@ -198,6 +244,107 @@ function ip_in_range( $ip, $range ) {
 	return ( ( $ip_decimal & $netmask_decimal ) == ( $range_decimal & $netmask_decimal ) );
 }
 
+/**
+ * GET THE RATE LIMIT FOR AN IP ADDRESS.
+ *
+ * FORMAT EXAMPLES:
+ *   192.168.0.175:10/600,*:5/600
+ *   192.168.0.0/24:20/600
+ *
+ * AN EXACT IP OR CIDR RULE TAKES PRECEDENCE OVER THE WILDCARD RULE.
+ */
+function get_rate_limit_for_ip($ip, $rules_raw) {
+	if ($rules_raw === '' || in_array(strtolower(trim($rules_raw)), array('off', 'none', 'false', '0'), true)) {
+		return false;
+	}
+
+	$default_limit = false;
+	foreach (explode(',', $rules_raw) as $rule) {
+		$rule = trim($rule);
+		$separator = strrpos($rule, ':');
+		if ($separator === false) {
+			throw new InvalidArgumentException("Invalid rule: $rule");
+		}
+
+		$selector = trim(substr($rule, 0, $separator));
+		$limit = trim(substr($rule, $separator + 1));
+		if (!preg_match('/^([1-9][0-9]*)\/([1-9][0-9]*)$/', $limit, $matches)) {
+			throw new InvalidArgumentException("Invalid limit: $limit");
+		}
+
+		$parsed_limit = array('max' => (int)$matches[1], 'seconds' => (int)$matches[2]);
+		if ($selector === '*') {
+			$default_limit = $parsed_limit;
+			continue;
+		}
+
+		if (ip_in_range($ip, $selector)) {
+			return $parsed_limit;
+		}
+	}
+
+	return $default_limit;
+}
+
+/**
+ * CONSUME ONE REQUEST FROM A TRUE ROLLING-WINDOW RATE LIMIT.
+ *
+ * APCU KEEPS ONLY A SMALL ARRAY OF TIMESTAMPS IN RAM. THE SHORT LOCK MAKES
+ * THE UPDATE ATOMIC WHEN PHP HAS MULTIPLE WORKERS. ALL DATA EXPIRES
+ * AUTOMATICALLY AND IS RESET WHEN THE CONTAINER RESTARTS.
+ */
+function consume_rate_limit($ip, $maximum, $seconds) {
+	if (!function_exists('apcu_enabled') || !apcu_enabled()) {
+		return array('error' => 'APCu is not enabled');
+	}
+
+	$key = 'sms_rate_' . hash('sha256', "$ip|$maximum|$seconds");
+	$lock_key = $key . '_lock';
+	$lock_timeout = microtime(true) + 0.25;
+
+	while (!apcu_add($lock_key, 1, 1)) {
+		if (microtime(true) >= $lock_timeout) {
+			return array('error' => 'Could not acquire APCu lock');
+		}
+		usleep(1000);
+	}
+
+	$now = microtime(true);
+	$timestamps = apcu_fetch($key, $found);
+	if (!$found || !is_array($timestamps)) {
+		$timestamps = array();
+	}
+
+	/* Remove requests that are older than the configured rolling window */
+	$oldest_allowed = $now - $seconds;
+	$timestamps = array_values(array_filter($timestamps, function ($timestamp) use ($oldest_allowed) {
+		return is_numeric($timestamp) && $timestamp > $oldest_allowed;
+	}));
+
+	if (count($timestamps) >= $maximum) {
+		$reset = (int)ceil($timestamps[0] + $seconds);
+		apcu_store($key, $timestamps, $seconds + 1);
+		apcu_delete($lock_key);
+		return array(
+			'allowed' => false,
+			'remaining' => 0,
+			'retry_after' => max(1, $reset - time()),
+			'reset' => $reset
+		);
+	}
+
+	$timestamps[] = $now;
+	apcu_store($key, $timestamps, $seconds + 1);
+	apcu_delete($lock_key);
+
+	return array(
+		'allowed' => true,
+		'remaining' => max(0, $maximum - count($timestamps)),
+		'retry_after' => 0,
+		'reset' => (int)ceil($timestamps[0] + $seconds)
+	);
+}
+
 /* Write a log line either to file or stdout, depending on configuration */
 function write_to_log($text_to_log) {
 	global $log_to_file, $sms_log_file;
@@ -207,7 +354,8 @@ function write_to_log($text_to_log) {
 	if ($log_to_file) {
 		file_put_contents($sms_log_file, $log_line.PHP_EOL, FILE_APPEND);
 	} else {
-		echo $log_line . PHP_EOL;
+		/* error_log writes to Docker stderr instead of polluting the HTTP response */
+		error_log($log_line);
 	}
 }
 

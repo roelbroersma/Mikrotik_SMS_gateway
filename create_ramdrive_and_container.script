@@ -5,8 +5,8 @@
 
 :delay 60s
 
-# Check for an active container
-:local runningContainers [/container/print count-only where running]
+# Check specifically whether the SMS gateway container is already running
+:local runningContainers [/container/print count-only where name="sms-gateway" and running]
 :if ($runningContainers > 0) do={
     :quit
 }
@@ -19,7 +19,7 @@
    :do { /container/stop $existingContainer } on-error={ :log warning "Couldn't stop container, might already be stopped." }
    :delay 20s
    :log info "Removing existing Container."
-   do { /container/remove $existingContainer } on-error={ :log warning "Couldn't remove container, might not be stopped." }
+   :do { /container/remove $existingContainer } on-error={ :log warning "Couldn't remove container, might not be stopped." }
    :delay 5s
    :log info "Stopped and Removed finished. Continue script"
 }

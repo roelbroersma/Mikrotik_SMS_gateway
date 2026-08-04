@@ -7,7 +7,7 @@ You can run the php script on a server but if you want a one-in-all solution, it
 How does that work? -> The Mikrotik router uses the 'Container' package and after each boot it will download this docker container in which it will host the PHP file (SMS Gateway).
 
 The Mikrotik router also uses a scheduler script to check if there is anything in the local SMS queue (in case the LTE interface was down) and send SMS messages via it's local API: `/tool sms send`.
-The PHP backend (`sendsms.php`) allows secure, remote SMS requests, it can be secured by a username/password and features an extra layer of checks and error messages ('Message too long' or 'Only Dutch numbers allowed').
+The PHP backend (`sendsms.php`) allows remote SMS requests protected by source-IP restrictions and per-IP rate limiting. `SMS_GATEWAY_USER` and `SMS_GATEWAY_PASS` authenticate the gateway to RouterOS; they do not authenticate incoming HTTP clients.
 
 ---
 
@@ -19,6 +19,7 @@ The PHP backend (`sendsms.php`) allows secure, remote SMS requests, it can be se
 - If sending fails, the message is kept in the queue for a future attempt.
 - Remote clients use `sendsms.php` to submit SMS messages via HTTP POST.
 - IP range restrictions and number validation (e.g. Only allow Dutch phone numbers) are enforced.
+- Per-IP rolling-window rate limits are kept only in APCu memory and reset when the container restarts.
 
 ---
 
@@ -60,6 +61,7 @@ which asks you to press the reset or power button. This is just for security pur
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_GATEWAY_PASS value="xxxxxxxxx"
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_QUEUE_FILE value="sms_queue.txt"
 /container/envs/add name=ENV_SMS_GATEWAY key=ALLOWED_IP_RANGES value="192.168.0.0/21,192.168.10.0/24"
+/container/envs/add name=ENV_SMS_GATEWAY key=RATE_LIMITS value="192.168.0.175:10/600,*:5/600"
 /container/envs/add name=ENV_SMS_GATEWAY key=ONLY_DUTCH value="true"
 /container/envs/add name=ENV_SMS_GATEWAY key=LOG_TO_FILE value="false"
 /container/envs/add name=ENV_SMS_GATEWAY key=SMS_LOG_FILE value="/tmp/sms.log"
@@ -106,9 +108,17 @@ Image available on Docker Hub: https://hub.docker.com/r/roeller/mikrotik-sms-gat
 |SMS_GATEWAY_PASS|Password for basic auth
 |SMS_QUEUE_FILE|Filename where unsent messages are queued
 |ALLOWED_IP_RANGES|Comma-separated list of allowed CIDR ranges (source IP restrictions)
+|RATE_LIMITS|Comma-separated `IP_OR_CIDR:MAX/SECONDS` rules. Default: `*:10/600`; use `off` to disable
 |ONLY_DUTCH|Set to true to only allow Dutch mobile numbers (+316...)
 |LOG_TO_FILE|true = write to file, false = echo to stdout (Docker logs)
 SMS_LOG_FILE|Path to log file (used if LOG_TO_FILE=true)
+
+
+### Rate limiting
+
+`RATE_LIMITS=192.168.0.175:10/600,*:5/600` allows the first IP a maximum of 10 requests in any rolling 600-second window and all other allowed IPs 5 requests. Exact IP or CIDR rules take precedence over `*`.
+
+The counters and timestamps are stored in APCu shared memory. They do not use a counter file or write to disk, and they are automatically cleared when the container restarts.
 
 
 ---
@@ -145,4 +155,3 @@ Pull requests welcome!
 
 Feel free to add features like retry counters, rate limits, or a web interface.
 If you want to help improve this project, please fork, code, and open a PR.
-
