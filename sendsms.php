@@ -6,9 +6,9 @@
  # AUTHOR:		ROEL BROERSMA											#
  # DESCRIPTION:	THIS FILE CAN BE RUN FROM A PHP HOST OR FROM DOCKER		#
  #				AND WILL WORK AS A REST API TO SEND A SMS TO A			#
- #				MIKROTIK DEVICE. IF IT COULD NOT BE SEND IT WILL		#
+ #				MIKROTIK DEVICE. IF IT COULD NOT BE SENT IT WILL		#
  #				QUEUE THE SMS TO A FILE WHICH WILL THEN LATER BE		#
- #				SEND FROM A SCHEDULER SCRIPT ON THE MIKROTIK DEVICE		#
+ #				BE SENT BY A SCHEDULER SCRIPT ON THE MIKROTIK DEVICE	#
  ########################################################################
  */
 
@@ -16,12 +16,12 @@
 $sms_gateway_url 		= getenv('SMS_GATEWAY_URL')			?: 'http://localhost';					// THE LOCATION OF THE MIKROTIK DEVICE (E.G. WAP AC LTE KIT)
 $sms_gateway_user 		= getenv('SMS_GATEWAY_USER')		?: 'api_user_of_mikrotik';				// API USERNAME (TIP: CREATE A NEW MIKROTIK API USER)
 $sms_gateway_pass 		= getenv('SMS_GATEWAY_PASS')		?: 'api_password_of_mikrotik';			// API PASSWORD (TIP: CREATE A NEW MIKROTIK API USER)
-$sms_queue_file   		= getenv('SMS_QUEUE_FILE')			?: 'sms_queue.txt';						// THE FILE ON THE MIKROTIK ROUTER TO WHICH SMS ARE SAVED WHEN THEY COULD NOT BE SEND (EG. LTE IS DOWN)
+$sms_queue_file   		= getenv('SMS_QUEUE_FILE')			?: 'sms_queue.txt';						// THE FILE ON THE MIKROTIK ROUTER TO WHICH SMS ARE SAVED WHEN THEY COULD NOT BE SENT (E.G. LTE IS DOWN)
 $allowed_ip_ranges_raw	= getenv('ALLOWED_IP_RANGES')		?: '192.168.0.0/21,192.168.10.0/24';	// ALLOW ONLY FROM THESE IPV4 CIDR RANGES (SEPARATE MULTIPLE RANGES BY A COMMA)
 $rate_limits_raw		= getenv('RATE_LIMITS')			?: '*:10/600';						// PER-IP LIMITS: IP_OR_CIDR:MAX/SECONDS, COMMA SEPARATED; USE "OFF" TO DISABLE
 $only_dutch				= strtolower(getenv('ONLY_DUTCH')	?: 'true') === 'true';					// SET TO TRUE TO ONLY SEND TO DUTCH +316xxxxxxx NUMBERS
-$log_to_file			= strtolower(getenv('LOG_TO_FILE')	?: 'true') === 'true';					// SET TO TRUE TO LOG TO FILE (IF ON DOCKER, IT WILL NOT LOG TO FILE BUT TO STDOUT)
-$sms_log_file			= getenv('SMS_LOG_FILE')			?: 'sms_logfile.log';					// IF NOT ON DOCKER, AND THE ABOVE LINE IS TRUE, LOG TO THIS FILE
+$log_to_file			= strtolower(getenv('LOG_TO_FILE')	?: 'true') === 'true';					// TRUE WRITES TO A FILE; FALSE WRITES TO STDERR (VISIBLE IN DOCKER LOGS)
+$sms_log_file			= getenv('SMS_LOG_FILE')			?: 'sms_logfile.log';					// FILE USED WHEN LOG_TO_FILE IS TRUE
 
 
 /* Accept input from form-data first, otherwise fall back to JSON body */
@@ -54,7 +54,7 @@ if (!$ip_allowed) {
 	return false;
 }
 
-/* Apply a rolling per-IP rate limit stored only in APCu shared memory */
+/* Limit incoming HTTP requests per connecting IP. Scheduler retries do not pass here. */
 try {
 	$rate_limit = get_rate_limit_for_ip($ipaddr, $rate_limits_raw);
 	if ($rate_limit !== false) {
@@ -287,7 +287,7 @@ function get_rate_limit_for_ip($ip, $rules_raw) {
 }
 
 /**
- * CONSUME ONE REQUEST FROM A TRUE ROLLING-WINDOW RATE LIMIT.
+ * CONSUME ONE REQUEST FROM A ROLLING-WINDOW RATE LIMIT.
  *
  * APCU KEEPS ONLY A SMALL ARRAY OF TIMESTAMPS IN RAM. THE SHORT LOCK MAKES
  * THE UPDATE ATOMIC WHEN PHP HAS MULTIPLE WORKERS. ALL DATA EXPIRES
@@ -345,7 +345,7 @@ function consume_rate_limit($ip, $maximum, $seconds) {
 	);
 }
 
-/* Write a log line either to file or stdout, depending on configuration */
+/* Write a log line either to file or stderr, depending on configuration */
 function write_to_log($text_to_log) {
 	global $log_to_file, $sms_log_file;
 
