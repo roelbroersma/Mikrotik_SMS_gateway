@@ -1,7 +1,7 @@
 # Alpine with PHP CLI (built-in server)
-# Using Alpine 3.21 (or latest stable)
+# Pinned to Alpine 3.21
 FROM alpine:3.21
-# APCu keeps rate-limit counters in RAM and never writes them to disk
+# APCu keeps the small rate-limit counters in RAM and never writes them to disk
 RUN apk add --no-cache php82-cli php82-pecl-apcu
 
 # Set up document root and copy PHP script

@@ -4,7 +4,7 @@
 
 :global filename "sms_queue.txt"
 
-# Controleer of het bestand bestaat
+# Check whether the queue file exists
 :if ([/file find name=$filename] != "") do={
   :global content [/file get $filename contents]
   :global contentLen [:len $content]
@@ -14,17 +14,17 @@
   :global lastEnd 0
   :global newContent ""
 
-  # Loop door het bestand tot het einde is bereikt
+  # Read the queue one line at a time
   :while ($lastEnd < $contentLen) do={
     # Search for LF; this supports both LF and CRLF queue files
     :set lineEnd [:find $content "\n" $lastEnd]
 
-    # Als er geen regelafbreking meer is, gebruik dan het einde van het bestand
+    # If there is no next line break, use the end of the file
     :if ([:typeof $lineEnd] = "nil") do={
       :set lineEnd $contentLen
     }
 
-    # Haal de huidige regel op tussen de vorige en de volgende regelafbreking
+    # Get the current line between the previous and next line break
     :set line [:pick $content $lastEnd $lineEnd]
 
     # Remove the remaining CR when the file uses CRLF
@@ -37,12 +37,12 @@
 	 
     :set lastEnd ($lineEnd + 1)
 
-    # Verwerk de regel als deze niet leeg is
+    # Process non-empty lines
     :if ($line != "") do={
-      # Zoek de scheiding tussen het telefoonnummer en het bericht
+      # Find the tab between the phone number and message
       :global parts [:find $line "\t"]
       
-      # Controleer of er een scheiding is gevonden
+      # Continue only when a tab was found
       :if ([:len $parts] > 0) do={
         :global phoneNumber [:pick $line 0 $parts]
         :global message [:pick $line ($parts + 1) [:len $line]]
@@ -54,12 +54,12 @@
         :do {
           /tool sms send port=lte1 phone-number=$phoneNumber message=$message
           :set success true
-          :delay 5s; # Wacht even om er zeker van te zijn dat de sms is verzonden
+          :delay 5s; # Wait before sending the next SMS
         } on-error={
           :log error ("Error sending SMS to " . $phoneNumber)
         }
 
-        # Als de sms niet is verzonden, voeg de regel dan toe aan het nieuwe bestand
+        # Keep failed messages in the queue for the next run
         :if ($success = false) do={
           # Add LF only between failed records
           :if ([:len $newContent] > 0) do={
@@ -71,6 +71,6 @@
     }
   }
 
-  # Vervang het oude bestand door het bijgewerkte bestand
+  # Replace the old queue with the messages that still failed
   /file set [find name=$filename] contents=$newContent
 }
