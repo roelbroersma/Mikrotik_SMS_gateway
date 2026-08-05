@@ -4,4 +4,4 @@
 
 ### Added
 
-- Added `LOG_TO_ROUTEROS`. When enabled, gateway log lines are written to stderr and appear in the RouterOS `/log` when container `logging=yes` is enabled. A successful direct send is logged as `SMS SENT: +316XXXXXXXX - Test message`.
+- Added `LOG_TO_ROUTEROS`. When enabled, a successful direct send is added directly to the RouterOS `/log` through `/rest/execute` as `script,info`. Container `logging=yes` is not required. Example: `SMS SENT: +316XXXXXXXX - Test message - Source IP: 192.0.2.10`.
