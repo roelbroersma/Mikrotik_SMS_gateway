@@ -97,7 +97,7 @@ For the automatic setup, download `create_ramdrive_and_container.script` and sch
 
 7. Add the container (only when doing it manually)
 ```
-/container/add remote-image=roeller/mikrotik-sms-gateway interface=veth1 root-dir=ram/sms-gateway envlist=ENV_SMS_GATEWAY name=sms-gateway logging=yes
+/container/add remote-image=roeller/mikrotik-sms-gateway interface=veth1 root-dir=ram/sms-gateway envlist=ENV_SMS_GATEWAY name=sms-gateway
 ```
 
 8. Start the container
@@ -122,22 +122,18 @@ Image available on Docker Hub: https://hub.docker.com/r/roeller/mikrotik-sms-gat
 |RATE_LIMITS|Comma-separated `IP_OR_CIDR:MAX/SECONDS` rules. Default: `*:10/600`; use `off` to disable
 |ONLY_DUTCH|Set to true to only allow Dutch mobile numbers (+316...)
 |LOG_TO_FILE|Set to true to append gateway log lines to SMS_LOG_FILE
-|LOG_TO_ROUTEROS|Set to true to also write gateway log lines to stderr. With container `logging=yes`, they appear in the RouterOS `/log`
+|LOG_TO_ROUTEROS|Set to true to add successful direct sends to the RouterOS `/log` as `script,info`
 |SMS_LOG_FILE|Path to log file (used if LOG_TO_FILE=true)
 
 
 ### Logging
 
-`LOG_TO_FILE` and `LOG_TO_ROUTEROS` are independent and can both be enabled. RouterOS container logging must also be enabled for the latter:
-
-```routeros
-/container/set [find name="sms-gateway"] logging=yes
-```
+`LOG_TO_FILE` and `LOG_TO_ROUTEROS` are independent and can both be enabled. `LOG_TO_ROUTEROS=true` uses the configured RouterOS REST credentials to call `/rest/execute` after a successful direct send. Container `logging=yes` is not required.
 
 A successfully sent SMS produces a line like:
 
 ```text
-2026-08-05T17:42:10+02:00 - 192.0.2.10 - SMS SENT: +316XXXXXXXX - Test message
+17:42:10 script,info SMS SENT: +316XXXXXXXX - Test message - Source IP: 192.0.2.10
 ```
 
 

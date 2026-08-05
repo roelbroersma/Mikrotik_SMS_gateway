@@ -21,7 +21,7 @@ $allowed_ip_ranges_raw	= getenv('ALLOWED_IP_RANGES')		?: '192.168.0.0/21,192.168
 $rate_limits_raw		= getenv('RATE_LIMITS')			?: '*:10/600';						// PER-IP LIMITS: IP_OR_CIDR:MAX/SECONDS, COMMA SEPARATED; USE "OFF" TO DISABLE
 $only_dutch				= strtolower(getenv('ONLY_DUTCH')	?: 'true') === 'true';					// SET TO TRUE TO ONLY SEND TO DUTCH +316xxxxxxx NUMBERS
 $log_to_file			= strtolower(getenv('LOG_TO_FILE')	?: 'true') === 'true';					// SET TO TRUE TO WRITE LOG LINES TO SMS_LOG_FILE
-$log_to_routeros		= strtolower(getenv('LOG_TO_ROUTEROS') ?: 'false') === 'true';					// SET TO TRUE TO ALSO WRITE LOG LINES TO STDERR FOR ROUTEROS CONTAINER LOGGING
+$log_to_routeros		= strtolower(getenv('LOG_TO_ROUTEROS') ?: 'false') === 'true';					// SET TO TRUE TO LOG SUCCESSFUL SENDS DIRECTLY TO THE ROUTEROS LOG
 $sms_log_file			= getenv('SMS_LOG_FILE')			?: 'sms_logfile.log';					// FILE USED WHEN LOG_TO_FILE IS TRUE
 
 
@@ -226,6 +226,7 @@ if ($result === FALSE) {
 //echo $config;
 echo "SMS SUCCESSFULLY SENT.";
 write_to_log ("SMS SENT: " .$phone." - ".$text);
+write_to_routeros_log ("SMS SENT: " .$phone." - ".$text." - Source IP: ".$ipaddr);
 
 
 
@@ -346,20 +347,44 @@ function consume_rate_limit($ip, $maximum, $seconds) {
 	);
 }
 
-/* Write a log line to each enabled destination */
+/* Write gateway events to the configured log file */
 function write_to_log($text_to_log) {
-	global $log_to_file, $log_to_routeros, $sms_log_file;
+	global $log_to_file, $sms_log_file;
 
 	$log_line = date(DATE_ATOM) . " - " . $_SERVER['REMOTE_ADDR'] . " - " . $text_to_log;
 
 	if ($log_to_file) {
 		file_put_contents($sms_log_file, $log_line.PHP_EOL, FILE_APPEND);
 	}
+}
 
-	if ($log_to_routeros) {
-		/* RouterOS logging=yes forwards the container's stderr output to /log */
-		error_log($log_line);
+/* Add successful sends directly to the RouterOS log through its REST API */
+function write_to_routeros_log($text_to_log) {
+	global $log_to_routeros, $sms_gateway_url, $sms_gateway_user, $sms_gateway_pass;
+
+	if (!$log_to_routeros) {
+		return;
 	}
+
+	/* Keep the SMS text inside one RouterOS string literal */
+	$routeros_text = str_replace(array('\\', '"', '$'), array('\\\\', '\\"', '\\$'), $text_to_log);
+	$json_data = json_encode(array('script' => '/log/info "' . $routeros_text . '"'));
+	$options = array(
+		'http' => array(
+			'method'  => 'POST',
+			'header'  => "Authorization: Basic " . base64_encode("$sms_gateway_user:$sms_gateway_pass") . "\r\n".
+					 "Content-type: application/json\r\n".
+					 "Content-Length: " . strlen($json_data) . "\r\n",
+			'content' => $json_data
+		),
+		'ssl' => array(
+			'verify_peer'      => false,
+			'verify_peer_name' => false,
+		),
+	);
+
+	/* A logging failure must not change an already successful SMS response */
+	@file_get_contents($sms_gateway_url . '/rest/execute', false, stream_context_create($options));
 }
 
 ?>
