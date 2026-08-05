@@ -20,7 +20,8 @@ $sms_queue_file   		= getenv('SMS_QUEUE_FILE')			?: 'sms_queue.txt';						// THE
 $allowed_ip_ranges_raw	= getenv('ALLOWED_IP_RANGES')		?: '192.168.0.0/21,192.168.10.0/24';	// ALLOW ONLY FROM THESE IPV4 CIDR RANGES (SEPARATE MULTIPLE RANGES BY A COMMA)
 $rate_limits_raw		= getenv('RATE_LIMITS')			?: '*:10/600';						// PER-IP LIMITS: IP_OR_CIDR:MAX/SECONDS, COMMA SEPARATED; USE "OFF" TO DISABLE
 $only_dutch				= strtolower(getenv('ONLY_DUTCH')	?: 'true') === 'true';					// SET TO TRUE TO ONLY SEND TO DUTCH +316xxxxxxx NUMBERS
-$log_to_file			= strtolower(getenv('LOG_TO_FILE')	?: 'true') === 'true';					// TRUE WRITES TO A FILE; FALSE WRITES TO STDERR (VISIBLE IN DOCKER LOGS)
+$log_to_file			= strtolower(getenv('LOG_TO_FILE')	?: 'true') === 'true';					// SET TO TRUE TO WRITE LOG LINES TO SMS_LOG_FILE
+$log_to_routeros		= strtolower(getenv('LOG_TO_ROUTEROS') ?: 'false') === 'true';					// SET TO TRUE TO ALSO WRITE LOG LINES TO STDERR FOR ROUTEROS CONTAINER LOGGING
 $sms_log_file			= getenv('SMS_LOG_FILE')			?: 'sms_logfile.log';					// FILE USED WHEN LOG_TO_FILE IS TRUE
 
 
@@ -224,7 +225,7 @@ if ($result === FALSE) {
 
 //echo $config;
 echo "SMS SUCCESSFULLY SENT.";
-write_to_log ($phone." - ".$text);
+write_to_log ("SMS SENT: " .$phone." - ".$text);
 
 
 
@@ -345,16 +346,18 @@ function consume_rate_limit($ip, $maximum, $seconds) {
 	);
 }
 
-/* Write a log line either to file or stderr, depending on configuration */
+/* Write a log line to each enabled destination */
 function write_to_log($text_to_log) {
-	global $log_to_file, $sms_log_file;
+	global $log_to_file, $log_to_routeros, $sms_log_file;
 
 	$log_line = date(DATE_ATOM) . " - " . $_SERVER['REMOTE_ADDR'] . " - " . $text_to_log;
 
 	if ($log_to_file) {
 		file_put_contents($sms_log_file, $log_line.PHP_EOL, FILE_APPEND);
-	} else {
-		/* error_log writes to Docker stderr instead of polluting the HTTP response */
+	}
+
+	if ($log_to_routeros) {
+		/* RouterOS logging=yes forwards the container's stderr output to /log */
 		error_log($log_line);
 	}
 }

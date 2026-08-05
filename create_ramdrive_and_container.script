@@ -44,7 +44,8 @@
   interface=veth1 \
   root-dir=ram/sms-gateway \
   envlist=ENV_SMS_GATEWAY \
-  name=sms-gateway
+  name=sms-gateway \
+  logging=yes
 :log info "Container created."
 
 # Wait until container is not in "extracting" mode anymore
