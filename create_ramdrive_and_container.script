@@ -1,62 +1,98 @@
 ###############################################################################
-### SCHEDULE THIS SCRIPT EVERY 5 MINUTES TO CHECK FOR THE CONTAINER         ###
-### IT WILL CREATE THE RAM DRIVE AND CONTAINER AFTER REBOOT OR WHEN STOPPED ###
+### SCHEDULE THIS SCRIPT EVERY 5 MINUTES TO CHECK FOR THE CONTAINER          ###
+### CONFIG MOUNT SMS_CONFIG MUST ALREADY EXIST (SEE README)                  ###
+### THE CONTAINER NOW HAS ITS OWN SENDER; DISABLE THE OLD QUEUE SCHEDULER     ###
 ###############################################################################
 
-:delay 60s
-
-# Check specifically whether the SMS gateway container is already running
-:local runningContainers [/container/print count-only where name="sms-gateway" and running]
-:if ($runningContainers > 0) do={
-    :quit
+# Do not let two copies rebuild or start the same container at once.
+:if ([/system/script/job/print count-only where script=[:jobname]] > 1) do={
+    :error "SMS container check is already running."
 }
 
-:log info "Starting script to stop/remove/add/start SMS container."
-# Stop and remove old container if it exists
-:local existingContainer [/container/find where name="sms-gateway"]
-:if ([:len $existingContainer] > 0) do={
-   :log info "Stopping existing Container."
-   :do { /container/stop $existingContainer } on-error={ :log warning "Couldn't stop container, might already be stopped." }
-   :delay 20s
-   :log info "Removing existing Container."
-   :do { /container/remove $existingContainer } on-error={ :log warning "Couldn't remove container, might not be stopped." }
-   :delay 5s
-   :log info "Stopped and Removed finished. Continue script"
-}
-
-# Remove ram drive (if exists)
-:if ([/disk/find where slot="ram"] != "") do={
-   :log info "Existing RAM Drive found, removing RAM drive."
-    /disk/remove [/disk/find where slot="ram"]
-    :log info "RAM drive removed."
-    :delay 2s
-}
-
-# Create new RAM drive
-:log info "Starting to create RAM drive."
-/disk/add type=tmpfs tmpfs-max-size=50M slot=ram
-:log info "RAM drive created."
-:delay 2s
-
-# Add Container
-:log info "Starting to create Container."
-/container/add remote-image=roeller/mikrotik-sms-gateway \
-  interface=veth1 \
-  root-dir=ram/sms-gateway \
-  envlist=ENV_SMS_GATEWAY \
-  name=sms-gateway
-:log info "Container created."
-
-# Wait until container is not in "extracting" mode anymore
-:while ([:len [/container/print where name="sms-gateway" and extracting ]] > 0) do={
-    :log info "Container still extracting..."
-    :delay 2s
-}
-:log info "Extracting finished."
-
-# Wait 10 seconds more...
 :delay 10s
 
-# Start the container
+# Check specifically whether the SMS gateway container is already running.
+:if ([/container/print count-only where name="sms-gateway" and running] > 0) do={
+    :return
+}
+
+# Persistent settings belong outside ram. Only Save in the admin page writes
+# settings.json; queue, counters, history and sessions never use this mount.
+:local configMount [/container/mounts/find where name="SMS_CONFIG"]
+:if ([:len $configMount] != 1) do={
+    :error "Create the SMS_CONFIG mount to /config first (see README)."
+}
+:if ([/container/mounts/get $configMount dst] != "/config") do={
+    :error "SMS_CONFIG must point to /config in the container."
+}
+
+# Keep the RAM disk on a container restart. Removing it would erase the live
+# queue and the outgoing rate-limit history as well as any other RAM files.
+:local ramDisk [/disk/find where slot="ram"]
+:if ([:len $ramDisk] = 0) do={
+    :log info "Creating SMS gateway RAM drive."
+    /disk/add type=tmpfs tmpfs-max-size=64M slot=ram
+    :delay 2s
+} else={
+    :if ([/disk/get $ramDisk type] != "tmpfs") do={
+        :error "The ram disk must be tmpfs. Refusing to write live SMS state to storage."
+    }
+}
+
+:if ([:len [/file/find where name="ram/sms-state"]] = 0) do={
+    /file/add name="ram/sms-state" type=directory
+}
+:local stateMount [/container/mounts/find where name="SMS_STATE"]
+:if ([:len $stateMount] = 0) do={
+    /container/mounts/add name=SMS_STATE src="ram/sms-state" dst="/dev/shm/sms-gateway"
+} else={
+    :if (([/container/mounts/get $stateMount src] != "ram/sms-state") || ([/container/mounts/get $stateMount dst] != "/dev/shm/sms-gateway")) do={
+        :error "SMS_STATE must map ram/sms-state to /dev/shm/sms-gateway."
+    }
+}
+
+:local existingContainer [/container/find where name="sms-gateway"]
+:if ([:len $existingContainer] > 1) do={
+    :error "More than one sms-gateway container exists."
+}
+
+# A stopped container with its root still present can simply restart. Updating
+# the image is a separate manual action, not something done every five minutes.
+:if (([:len $existingContainer] = 1) && ([:len [/file/find where name="ram/sms-gateway"]] > 0)) do={
+    :if ([/container/print count-only where name="sms-gateway" and extracting] > 0) do={
+        :return
+    }
+    /container/start $existingContainer
+    :log info "SMS gateway container restarted; RAM state retained."
+    :return
+}
+
+# After a router reboot the old container entry can remain, but its RAM root
+# is gone. Remove only that stale entry; do not remove the RAM disk itself.
+:if ([:len $existingContainer] = 1) do={
+    /container/remove $existingContainer
+}
+
+:log info "Creating SMS gateway container."
+/container/add remote-image=roeller/mikrotik-sms-gateway \
+    interface=veth1 \
+    root-dir=ram/sms-gateway \
+    mounts=SMS_CONFIG,SMS_STATE \
+    envlist=ENV_SMS_GATEWAY \
+    name=sms-gateway
+
+# Give extraction time to start, then wait up to three minutes. The scheduler
+# will check again on its next run if the download needs longer.
+:delay 5s
+:local checks 0
+:while (([/container/print count-only where name="sms-gateway" and extracting] > 0) && ($checks < 90)) do={
+    :delay 2s
+    :set checks ($checks + 1)
+}
+:if ([/container/print count-only where name="sms-gateway" and extracting] > 0) do={
+    :log warning "SMS gateway still extracting; will check again on the next run."
+    :return
+}
+
 /container/start [find where name="sms-gateway"]
-:log info "Container sms-gateway started."
+:log info "SMS gateway started. Fresh RAM state starts with the configured rate-limit cooldown."

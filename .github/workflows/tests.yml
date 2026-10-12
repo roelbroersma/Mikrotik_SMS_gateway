@@ -1,0 +1,26 @@
+name: Test SMS gateway
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP test runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y php-cli php-curl
+      - name: Check PHP and shell syntax
+        run: |
+          find . -name '*.php' -print0 | xargs -0 -n 1 php -l
+          sh -n entrypoint.sh
+      - name: Exercise the gateway with a local fake router
+        run: python3 -m unittest discover -s tests -v

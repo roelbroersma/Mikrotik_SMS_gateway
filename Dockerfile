@@ -1,18 +1,19 @@
 # Alpine with PHP CLI (built-in server)
 # Pinned to Alpine 3.21
 FROM alpine:3.21
-# APCu keeps the small rate-limit counters in RAM and never writes them to disk
-RUN apk add --no-cache php82-cli php82-pecl-apcu
+# The HTTP server and sender share a small, locked state file on tmpfs.
+RUN apk add --no-cache php82-cli php82-curl php82-session
 
 # Set up document root and copy PHP script
 WORKDIR /var/www
-COPY sendsms.php /var/www/
+COPY sendsms.php gateway.php worker.php admin.php index.php router.php admin.css admin.js /var/www/
+COPY entrypoint.sh /usr/local/bin/sms-gateway
+RUN chmod +x /usr/local/bin/sms-gateway && mkdir -p /config
 
-# Optionally, ensure the script is the default index
-# (Uncomment the next line to make sendsms.php the index page)
-# RUN cp /var/www/sendsms.php /var/www/index.php
+ENV SMS_STATE_DIR=/dev/shm/sms-gateway \
+    SMS_CONFIG_FILE=/config/settings.json \
+    LOG_TO_FILE=false
 
-# Expose port 80 and start PHP built-in server on 0.0.0.0:80
+# Expose the API and admin page on the same small PHP server.
 EXPOSE 80
-# APCu is disabled for CLI by default; the built-in server uses the CLI SAPI
-CMD ["php82", "-d", "apc.enable_cli=1", "-d", "apc.shm_size=1M", "-S", "0.0.0.0:80", "-t", "/var/www"]
+ENTRYPOINT ["/usr/local/bin/sms-gateway"]
