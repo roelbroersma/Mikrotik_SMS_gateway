@@ -1,0 +1,5 @@
+.git
+tests
+*.log
+settings.json
+sms_queue.txt
