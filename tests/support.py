@@ -76,11 +76,26 @@ class FakeRouter:
 
 class Sandbox:
     def __init__(self, **overrides):
+        # Run an isolated source copy with a monotonic epoch offset. A freshly
+        # booted CI runner may not yet have one hour of past timestamps available.
+        # Only the test copy changes; the clock still advances at its real rate.
+        clock = "function gateway_mono() { return hrtime(true) / 1000000000; }"
+        test_clock = "function gateway_mono() { return 864000 + hrtime(true) / 1000000000; }"
+        gateway_source = (ROOT / "gateway.php").read_text()
+        if gateway_source.count(clock) != 1:
+            raise AssertionError("Expected exactly one gateway_mono definition for the test-only clock offset")
+
         # RAM directories are disposable and never share production state.
         parent = "/dev/shm" if Path("/dev/shm").is_dir() else None
         self.directory = Path(tempfile.mkdtemp(prefix="sms-gateway-test-", dir=parent))
         self.runtime = self.directory / "runtime"
         self.config = self.directory / "config"
+        self.project = self.directory / "app"
+        self.project.mkdir()
+        for source in ROOT.iterdir():
+            if source.is_file() and source.suffix in (".php", ".css", ".js"):
+                shutil.copyfile(source, self.project / source.name)
+        (self.project / "gateway.php").write_text(gateway_source.replace(clock, test_clock))
         self.runtime.mkdir()
         self.config.mkdir()
         self.router = FakeRouter()
@@ -102,7 +117,7 @@ class Sandbox:
         self.processes = []
 
     def php(self, code, timeout=10):
-        result = subprocess.run([PHP, "-r", code], cwd=ROOT, env=self.env,
+        result = subprocess.run([PHP, "-r", code], cwd=self.project, env=self.env,
                                 text=True, capture_output=True, timeout=timeout)
         if result.returncode:
             raise AssertionError(f"PHP exit {result.returncode}: {result.stderr}\n{result.stdout}")
@@ -117,8 +132,8 @@ class Sandbox:
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
-        process = subprocess.Popen([PHP, "-S", f"127.0.0.1:{port}", "-t", str(ROOT), str(ROOT / "router.php")],
-                                   cwd=ROOT, env=self.env, stdout=subprocess.DEVNULL,
+        process = subprocess.Popen([PHP, "-S", f"127.0.0.1:{port}", "-t", str(self.project), str(self.project / "router.php")],
+                                   cwd=self.project, env=self.env, stdout=subprocess.DEVNULL,
                                    stderr=subprocess.DEVNULL, start_new_session=True)
         self.processes.append(process)
         for _ in range(100):

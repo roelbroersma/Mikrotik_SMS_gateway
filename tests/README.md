@@ -18,6 +18,13 @@ It never sends a real SMS. Runtime and configuration fixtures use disposable
 `/dev/shm` directories, and the suite removes them after each test.
 
 Tests exercise requests and worker calls across independent PHP processes.
-Elapsed-time tests move only their fixture timestamps under the state lock;
-production still reads its actual monotonic clock. There is no HTTP parameter
-or production environment variable that overrides the clock.
+Each sandbox copies the PHP files and static assets into its temporary app directory.
+The copy adds a fixed ten-day offset to `gateway_mono()`, so tests can move fixture
+history backwards even on a freshly booted CI runner. The monotonic clock still
+advances at its real rate, and the same offset applies to the HTTP server and
+worker processes. The replacement requires exactly one matching function.
+
+Elapsed-time tests move only their fixture timestamps under the state lock.
+Production source and its state validation remain unchanged; no HTTP parameter
+or production environment variable can override the clock. Syntax tests lint
+the original production PHP files.
