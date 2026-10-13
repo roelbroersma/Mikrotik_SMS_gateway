@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Grouped and aligned admin settings, with shorter interface text.
+- Added a separate startup hold setting (`STARTUP_HOLD_SECONDS`), defaulting to 300 seconds. Saved settings can change an active hold without resetting known counters.
+- The startup hold is independent of the counting period. A hold shorter than that period cannot guarantee the rolling limit across a RAM reset; use 3600 seconds for the previous hourly protection.
+
 ## v2.0.0 - 2026-10-13
 
 ### Added

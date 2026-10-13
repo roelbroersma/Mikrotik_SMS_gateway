@@ -575,55 +575,46 @@ select {
     gap: 6px;
 }
 
-.storage-note {
+.settings-group {
+    min-width: 0;
+    margin: 0 0 22px;
+    padding: 16px 0 0;
+    border: 0;
     border-top: 1px solid var(--line);
-    padding-top: 20px;
-    margin-top: 25px;
 }
 
-.storage-note strong {
-    font-size: 11px;
-    color: #4e6470;
-    font-weight: 600;
+.settings-group legend {
+    padding: 0 12px 0 0;
+    font-size: 13px;
+    font-weight: 650;
+    color: var(--ink);
 }
 
-.storage-note p {
-    font-size: 10px;
-    line-height: 1.7;
-    color: var(--muted);
-    margin-top: 7px;
-}
-
-.field-grid {
+.setting-row {
     display: grid;
-    grid-template-columns: repeat(2,minmax(0,1fr));
-    gap: 22px;
+    grid-template-columns: minmax(0, 1fr) 100px 90px;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
 }
 
-.field-grid label>span {
-    color: #81909a;
-    font-size: 10px;
-    font-weight: 450;
-    margin-left: 3px;
+.setting-row input {
+    margin: 0;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
-.field-grid small {
-    display: block;
+.setting-unit {
     color: var(--muted);
-    line-height: 1.55;
-    font-weight: 400;
     font-size: 10px;
-    margin-top: 6px;
+    font-weight: 400;
 }
 
-.settings-note {
-    font-size: 11px;
-    color: #667c89;
-    line-height: 1.7;
-    background: #f3f7f9;
-    padding: 13px 15px;
-    border-radius: 6px;
-    margin: 25px 0 20px;
+.group-note {
+    margin: 8px 0 0;
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--muted);
 }
 
 .form-footer {
@@ -771,10 +762,6 @@ select {
         grid-row: 2;
         align-self: start;
     }
-    .test-panel .storage-note {
-        margin-top: 16px;
-        padding-top: 15px;
-    }
     .metrics {
         grid-template-columns: repeat(2,minmax(0,1fr));
     }
@@ -872,8 +859,9 @@ select {
     .section-heading p {
         font-size: 10px;
     }
-    .field-grid {
-        gap: 18px 14px;
+    .setting-row {
+        grid-template-columns: minmax(0, 1fr) 76px 65px;
+        gap: 8px;
     }
     .message-phone {
         font-size: 12px;
@@ -929,7 +917,7 @@ select {
     display: flex;
     align-items: flex-start;
     gap: 9px;
-    margin-top: 23px;
+    margin: 0;
 }
 
 .checkbox-field input {
@@ -938,13 +926,4 @@ select {
     margin: 0;
     flex-shrink: 0;
     accent-color: var(--blue);
-}
-
-.checkbox-field small {
-    display: block;
-    color: var(--muted);
-    font-size: 10px;
-    font-weight: 400;
-    margin-top: 6px;
-    line-height: 1.5;
 }

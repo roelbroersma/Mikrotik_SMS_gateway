@@ -70,14 +70,15 @@ function isoTime(value) {
 
 function emptyList(container, title, detail) {
     const box = element('div', 'empty');
-    box.append(element('strong', '', title), element('span', '', detail));
+    box.append(element('strong', '', title));
+    if (detail) box.append(element('span', '', detail));
     container.replaceChildren(box);
 }
 
 function renderMessages(container, records, queue = false) {
     container.replaceChildren();
     if (!records.length) {
-        emptyList(container, queue ? 'All clear. No messages waiting.' : 'No messages to show.', queue ? 'New messages will appear here before they are sent.' : 'Results will appear here as the queue is processed.');
+        emptyList(container, queue ? 'Queue empty' : 'No results');
         return;
     }
     for (const record of records) {
@@ -136,23 +137,23 @@ function tick() {
     let title, detail, state;
     if (snapshot.paused) {
         title = 'Sending is paused';
-        detail = 'New requests can still join the queue. Resume when you are ready.';
+        detail = 'New messages remain queued.';
         state = 'hold';
     } else if (cooldown > 0) {
-        title = 'Startup hold · ' + duration(cooldown) + ' remaining';
-        detail = 'Waiting one full window after RAM state was lost, so a restart cannot bypass the sending limit.';
+        title = 'Waiting after RAM reset · ' + duration(cooldown) + ' remaining';
+        detail = 'Previous send counts were lost. Waiting for the configured startup delay.';
         state = 'hold';
     } else if (snapshot.attempts_in_window >= snapshot.limit) {
-        title = 'Sending budget used';
-        detail = 'Messages stay queued until earlier attempts leave the rolling window.';
+        title = 'Sending limit reached';
+        detail = 'Sending resumes when earlier attempts fall outside the counting period.';
         state = 'hold';
     } else if ((snapshot.queue || []).length) {
-        title = wait > 0 ? 'Queue is waiting for the next slot' : 'Queue ready to send';
-        detail = 'Messages are processed oldest first. Every attempt counts towards the shared limit.';
+        title = wait > 0 ? 'Waiting to send' : 'Queue ready to send';
+        detail = 'Oldest messages first.';
         state = 'ready';
     } else {
-        title = 'Ready for new messages';
-        detail = 'The queue is empty. Sending limits remain active for new requests.';
+        title = 'Ready';
+        detail = 'Queue empty.';
         state = 'ready';
     }
     banner.className = 'status-banner ' + state;
@@ -170,7 +171,7 @@ function applySnapshot(data) {
     byId('metric-window').textContent = 'In the last ' + duration(data.window_seconds);
     byId('metric-interval').textContent = 'At least ' + data.settings.interval_seconds + ' seconds between attempts';
     byId('metric-sent').textContent = (data.history || []).filter(record => record.status === 'sent').length;
-    byId('history-note').textContent = 'Up to ' + data.settings.history_limit + ' recent results in RAM. Times are UTC.';
+    byId('history-note').textContent = 'Last ' + data.settings.history_limit + ' results · UTC';
     const pause = byId('pause-button');
     pause.textContent = data.paused ? 'Resume sending' : 'Pause sending';
     pause.disabled = false;

@@ -97,10 +97,10 @@ class GatewayTests(unittest.TestCase):
         future = self.php("gateway_with_state(function (&$s,$c,$now) { return gateway_budget($s,$c,$now+3601); })")
         self.assertEqual(0, future["attempts"])
 
-    def test_cold_start_and_lost_ram_do_not_reset_send_allowance(self):
+    def test_cold_start_and_lost_ram_apply_default_five_minute_hold(self):
         self.enqueue()
         initial = self.snapshot()
-        self.assertGreaterEqual(initial["cooldown_until"] - initial["now"], 3599)
+        self.assertGreaterEqual(initial["cooldown_until"] - initial["now"], 299)
         self.assertEqual("waiting", self.tick()["status"])
         self.warm()
         self.assertEqual("sent", self.tick()["status"])
@@ -108,7 +108,7 @@ class GatewayTests(unittest.TestCase):
         self.enqueue("new-runtime")
         self.assertEqual("waiting", self.tick()["status"])
         self.assertEqual(1, len(self.sandbox.router.sends))
-        self.assertGreaterEqual(self.snapshot()["cooldown_until"] - self.snapshot()["now"], 3599)
+        self.assertGreaterEqual(self.snapshot()["cooldown_until"] - self.snapshot()["now"], 299)
 
     def test_expiry_and_queue_capacity_are_bounded(self):
         self.sandbox.env.update(QUEUE_MAX_MESSAGES="2", QUEUE_MAX_AGE_SECONDS="60")
@@ -236,16 +236,71 @@ class GatewayTests(unittest.TestCase):
         result = self.php("(function () { try { gateway_enqueue('+31612345678','changed','192.0.2.1','fixture-key'); } catch (GatewayException $e) { return $e->httpStatus; } })()")
         self.assertEqual(409, result)
 
-    def test_larger_limit_window_extends_cooldown_when_old_history_is_unknown(self):
-        self.sandbox.env["SEND_LIMITS"] = "20/60"
-        self.snapshot()
-        self.mutate("$s['origin_mono'] = max(0, $now - 61); $s['cooldown_mono'] = 0;")
+    def test_counting_period_changes_preserve_attempts_without_extending_startup(self):
+        self.sandbox.env["SEND_LIMITS"] = "1/60"
+        self.warm()
+        self.enqueue("first")
+        self.assertEqual("sent", self.tick()["status"])
+        self.advance(61)
+        self.assertEqual(0, self.snapshot()["attempts_in_window"])
         self.php("gateway_save_settings(array('window_seconds' => 3600))")
         snapshot = self.snapshot()
-        self.assertGreaterEqual(snapshot["cooldown_until"] - snapshot["now"], 3538)
-        self.enqueue()
+        self.assertEqual(snapshot["now"], snapshot["cooldown_until"])
+        self.assertEqual(1, snapshot["attempts_in_window"])
+        self.enqueue("second")
         self.assertEqual("waiting", self.tick()["status"])
-        self.assertEqual([], self.sandbox.router.sends)
+        self.assertEqual(1, len(self.sandbox.router.sends))
+
+    def test_startup_hold_boundary_and_restart_do_not_restart_timer(self):
+        self.enqueue()
+        self.advance(299)
+        self.assertEqual("waiting", self.tick()["status"])
+        before = self.snapshot()["cooldown_until"]
+        # Each snapshot runs in a fresh PHP process against the same RAM mount.
+        self.assertAlmostEqual(before, self.snapshot()["cooldown_until"], delta=1)
+        self.advance(2)
+        self.assertEqual("sent", self.tick()["status"])
+
+    def test_startup_setting_save_counts_elapsed_time_and_survives_ram_loss(self):
+        self.sandbox.env["STARTUP_HOLD_SECONDS"] = "3600"
+        self.enqueue()
+        self.advance(301)
+        self.assertEqual("waiting", self.tick()["status"])
+        self.php("gateway_save_settings(array('startup_hold_seconds' => 300))")
+        self.assertEqual("sent", self.tick()["status"])
+        self.assertEqual(1, self.snapshot()["attempts_in_window"])
+        self.php("gateway_save_settings(array('startup_hold_seconds' => 600))")
+        self.enqueue("extended-hold")
+        self.assertEqual("waiting", self.tick()["status"])
+        self.assertEqual(1, self.snapshot()["attempts_in_window"])
+        (self.sandbox.runtime / "state.json").unlink()
+        snapshot = self.snapshot()
+        self.assertEqual(600, snapshot["settings"]["startup_hold_seconds"])
+        self.assertGreaterEqual(snapshot["cooldown_until"] - snapshot["now"], 599)
+        saved = json.loads((self.sandbox.config / "settings.json").read_text())
+        self.assertEqual(600, saved["startup_hold_seconds"])
+
+    def test_legacy_state_and_config_use_new_startup_default(self):
+        # v2.0 config has no startup field, and its RAM deadline was the full hour.
+        (self.sandbox.config / "settings.json").write_text(json.dumps({"limit": 7, "window_seconds": 3600}))
+        self.snapshot()
+        self.mutate("$s['origin_mono'] = $now - 301; $s['cooldown_mono'] = $now + 3299;")
+        snapshot = self.snapshot()
+        self.assertEqual(300, snapshot["settings"]["startup_hold_seconds"])
+        self.assertEqual(7, snapshot["limit"])
+        self.assertEqual(snapshot["now"], snapshot["cooldown_until"])
+        self.assertNotIn("startup_hold_seconds", json.loads((self.sandbox.config / "settings.json").read_text()))
+
+    def test_zero_startup_hold_and_invalid_values(self):
+        self.sandbox.env["STARTUP_HOLD_SECONDS"] = "0"
+        self.enqueue()
+        self.assertEqual("sent", self.tick()["status"])
+        for value in (-1, 86401, "five", "1.5"):
+            with self.subTest(value=value):
+                code = "(function () { try { gateway_save_settings(array('startup_hold_seconds' => %s)); } catch (GatewayException $e) { return $e->httpStatus; } })()" % json.dumps(value)
+                self.assertEqual(400, self.php(code))
+        self.assertEqual(0, self.snapshot()["settings"]["startup_hold_seconds"])
+        self.assertEqual(1, self.snapshot()["attempts_in_window"])
 
     def test_lowering_attempt_limit_retires_exhausted_retry(self):
         self.warm()

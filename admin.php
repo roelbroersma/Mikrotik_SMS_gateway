@@ -235,7 +235,7 @@ try {
         }
         if ($action === 'save_settings') {
             $settings = [];
-            foreach (['interval_seconds', 'limit', 'window_seconds', 'max_attempts', 'max_age_seconds', 'max_queue', 'history_limit'] as $key) {
+            foreach (['interval_seconds', 'limit', 'window_seconds', 'startup_hold_seconds', 'max_attempts', 'max_age_seconds', 'max_queue', 'history_limit'] as $key) {
                 $value = admin_text($key);
                 if (!preg_match('/^[0-9]{1,9}$/D', $value)) {
                     admin_json(['error' => 'Enter whole numbers for all settings.'], 400);
@@ -292,7 +292,6 @@ header('Content-Type: text/html; charset=utf-8');
         <div class="brand-mark" aria-hidden="true">SMS</div>
         <p class="eyebrow">MIKROTIK SMS GATEWAY</p>
         <h1>Sign in</h1>
-        <p class="muted">Queue, sending limits and recent messages.</p>
         <?php if ($error !== ''): ?><p class="notice error" role="alert"><?= admin_escape($error) ?></p><?php endif; ?>
         <?php if (!$unavailable): ?>
         <form action="/admin.php?action=login" method="post" class="stack">
@@ -310,12 +309,12 @@ header('Content-Type: text/html; charset=utf-8');
     <div class="header-actions"><span id="connection" class="connection">Connecting…</span><form action="/admin.php?action=logout" method="post"><input type="hidden" name="csrf" value="<?= admin_escape($csrf) ?>"><button class="button quiet" type="submit">Sign out</button></form></div>
 </header>
 <main class="dashboard">
-    <div class="page-heading"><div><p class="eyebrow">CONTROL PANEL</p><h1>Messages &amp; sending</h1><p class="muted">One queue. The same limits for every outgoing SMS.</p></div><button id="pause-button" class="button secondary" type="button" disabled>Pause sending</button></div>
+    <div class="page-heading"><h1>SMS gateway</h1><button id="pause-button" class="button secondary" type="button" disabled>Pause sending</button></div>
     <div id="notification" class="notice" role="status" hidden></div>
     <section id="status-banner" class="status-banner" aria-live="polite"><span class="status-dot"></span><div><strong id="status-title">Loading gateway status…</strong><p id="status-detail">Checking the queue and sending limits.</p></div></section>
     <section class="metrics" aria-label="Sending status">
         <div class="metric"><span>In queue</span><strong id="metric-queue">—</strong><small>Oldest first</small></div>
-        <div class="metric"><span>Sending budget used</span><strong id="metric-budget">—</strong><small id="metric-window">Rolls forward with time</small></div>
+        <div class="metric"><span>Send attempts</span><strong id="metric-budget">—</strong><small id="metric-window">—</small></div>
         <div class="metric"><span>Next possible attempt</span><strong id="metric-next">—</strong><small id="metric-interval">Includes retries and test messages</small></div>
         <div class="metric"><span>Recent successful sends</span><strong id="metric-sent">—</strong><small>Accepted by the router</small></div>
     </section>
@@ -328,7 +327,7 @@ header('Content-Type: text/html; charset=utf-8');
                 <button class="tab" id="tab-settings" role="tab" aria-controls="view-settings" aria-selected="false" tabindex="-1" data-view="settings">Settings</button>
             </div>
             <section id="view-queue" role="tabpanel" aria-labelledby="tab-queue" class="view">
-                <div class="section-heading"><div><h2>Waiting to send</h2><p>Times are UTC. Queued messages and history stay in RAM.</p></div><span class="tag">RAM</span></div>
+                <div class="section-heading"><div><h2>Queue</h2><p>Oldest first · UTC</p></div></div>
                 <div id="queue-list" class="message-list"><p class="empty">Loading messages…</p></div>
             </section>
             <section id="view-history" role="tabpanel" aria-labelledby="tab-history" class="view" hidden>
@@ -340,35 +339,46 @@ header('Content-Type: text/html; charset=utf-8');
                 <div id="inbox-list" class="message-list"><p class="empty">Load received messages from the router.</p></div>
             </section>
             <section id="view-settings" role="tabpanel" aria-labelledby="tab-settings" class="view" hidden>
-                <div class="section-heading"><div><h2>Sending limits</h2><p>Saved to the persistent config mount only when you press Save.</p></div><span class="tag">SAVED CONFIG</span></div>
+                <div class="section-heading"><h2>Settings</h2></div>
                 <form id="settings-form" class="settings-form">
-                    <div class="field-grid">
-                        <label>Minimum interval <span>seconds</span><input type="number" name="interval_seconds" min="5" max="3600" step="1" required><small>Between every attempt, including retries.</small></label>
-                        <label>Maximum attempts per window<input type="number" name="limit" min="1" max="1000" step="1" required><small>A shared budget for all outgoing messages.</small></label>
-                        <label>Rolling window <span>seconds</span><input type="number" name="window_seconds" min="60" max="86400" step="1" required><small>3600 seconds = one hour.</small></label>
-                        <label>Attempts per message<input type="number" name="max_attempts" min="1" max="10" step="1" required><small>Uncertain sends are never retried automatically.</small></label>
-                        <label>Maximum queue age <span>seconds</span><input type="number" name="max_age_seconds" min="60" max="604800" step="1" required><small>Old alerts expire instead of arriving much later.</small></label>
-                        <label>Maximum queued messages<input type="number" name="max_queue" min="1" max="1000" step="1" required><small>New requests are rejected when the queue is full.</small></label>
-                        <label>Recent activity to keep<input type="number" name="history_limit" min="1" max="1000" step="1" required><small>Number of results held in RAM.</small></label>
-                    </div>
-                    <label class="checkbox-field"><input type="checkbox" name="paused"><span>Start paused after RAM reset<small>Changing this saved default also changes the current pause state.</small></span></label>
-                    <p class="settings-note">After RAM state is lost, sending waits for one complete window before restarting. Restarting the container does not grant a fresh sending budget.</p>
+                    <fieldset class="settings-group">
+                        <legend>Sending limits</legend>
+                        <label class="setting-row"><span>Minimum interval</span><input type="number" name="interval_seconds" min="5" max="3600" step="1" required><span class="setting-unit">seconds</span></label>
+                        <label class="setting-row"><span>Maximum attempts</span><input type="number" name="limit" min="1" max="1000" step="1" required><span class="setting-unit">per period</span></label>
+                        <label class="setting-row"><span>Counting period</span><input type="number" name="window_seconds" min="60" max="86400" step="1" required><span class="setting-unit">seconds</span></label>
+                        <p class="group-note">Counts all attempts in the preceding period, including retries.</p>
+                    </fieldset>
+                    <fieldset class="settings-group">
+                        <legend>Queue &amp; retries</legend>
+                        <label class="setting-row"><span>Queue capacity</span><input type="number" name="max_queue" min="1" max="1000" step="1" required><span class="setting-unit">messages</span></label>
+                        <label class="setting-row"><span>Expire after</span><input type="number" name="max_age_seconds" min="60" max="604800" step="1" required><span class="setting-unit">seconds</span></label>
+                        <label class="setting-row"><span>Maximum attempts</span><input type="number" name="max_attempts" min="1" max="10" step="1" required><span class="setting-unit">per message</span></label>
+                    </fieldset>
+                    <fieldset class="settings-group">
+                        <legend>History</legend>
+                        <label class="setting-row"><span>Keep recent results</span><input type="number" name="history_limit" min="1" max="1000" step="1" required><span class="setting-unit">messages</span></label>
+                    </fieldset>
+                    <fieldset class="settings-group">
+                        <legend>Startup</legend>
+                        <label class="setting-row"><span>Wait after RAM reset</span><input type="number" name="startup_hold_seconds" min="0" max="86400" step="1" required><span class="setting-unit">seconds</span></label>
+                        <label class="checkbox-field"><input type="checkbox" name="paused"><span>Start paused after RAM reset</span></label>
+                        <p class="group-note">Saving a changed pause setting also pauses or resumes sending now.</p>
+                    </fieldset>
                     <div class="form-footer"><span id="settings-state" class="muted">Loading settings…</span><button class="button primary" type="submit" disabled>Save settings</button></div>
                 </form>
             </section>
         </section>
         <aside class="panel test-panel">
-            <div class="section-heading"><div><h2>Test SMS</h2><p>Added to the regular queue.</p></div></div>
+            <div class="section-heading"><h2>Test SMS</h2></div>
             <form id="test-form" class="stack">
                 <label>Phone number<input name="phone" type="tel" placeholder="+316XXXXXXXX" autocomplete="off" maxlength="32" required></label>
                 <label>Message<textarea name="text" rows="4" placeholder="Test message" maxlength="160" required></textarea></label>
                 <div class="compose-footer"><span id="character-count">0 / 160 bytes</span><span>Single SMS · GSM-7 text</span></div>
                 <button class="button primary" type="submit" disabled>Add test to queue</button>
             </form>
-            <div class="storage-note"><strong>Little to write, little to wear.</strong><p>Queue, activity and login sessions are in RAM. They are cleared when that RAM is lost. Only saved settings use the config mount.</p></div>
         </aside>
     </div>
-    <footer class="page-footer"><span>Gateway state refreshes every 5 seconds.</span><span id="last-updated">Waiting for first update</span></footer>
+    <footer class="page-footer"><span id="last-updated">Waiting for first update</span></footer>
 </main>
 <?php endif; ?>
 </body>

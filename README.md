@@ -32,7 +32,7 @@ The container itself is stored in `ram/sms-gateway` when using the supplied Mikr
 
 The only persistent gateway data is `/config/settings.json`. Mount `/config` from a separate directory on flash, outside `ram/sms-gateway`. This file is written when you click **Save settings**, not for every SMS or counter update. Gateway and admin passwords stay in Docker ENV settings.
 
-A router reboot clears the RAM queue and history. The MikroTik startup script preserves the state when restarting a container on the existing RAM disk. Recreating only the container also preserves state when its external RAM mount remains; clearing or recreating that mount loses the state. The Linux Docker example uses a container-owned tmpfs, which is cleared when that container stops. A missing or reset state starts a full outgoing-limit cooldown: with `SEND_LIMITS=20/3600`, sending waits 60 minutes. This also applies on first installation. A restart must not give a new allowance of 20 SMS messages. Messages that expire while waiting will not be sent later.
+A router reboot clears the RAM queue and history. The MikroTik startup script preserves the state when restarting a container on the existing RAM disk. Recreating only the container also preserves state when its external RAM mount remains; clearing or recreating that mount loses the state. The Linux Docker example uses a container-owned tmpfs, which is cleared when that container stops. A missing or reset state starts the configured startup hold: `STARTUP_HOLD_SECONDS=300` waits 5 minutes by default, independently of `SEND_LIMITS`. This also applies on first installation. Set the hold to at least the counting period (3600 seconds for an hourly limit) to cover unknown attempts before the reset. A shorter hold cannot guarantee the rolling limit across a router reboot because earlier counters were lost; it does not restore them. A value of 0 disables this startup wait. Messages that expire while waiting will not be sent later.
 
 ---
 
@@ -114,6 +114,7 @@ RouterOS asks you to confirm this with physical access to the router.
 /container/envs/add name=ENV_SMS_GATEWAY key=RATE_LIMITS value="192.168.0.175:10/600,*:5/600"
 /container/envs/add name=ENV_SMS_GATEWAY key=SEND_INTERVAL_SECONDS value="10"
 /container/envs/add name=ENV_SMS_GATEWAY key=SEND_LIMITS value="20/3600"
+/container/envs/add name=ENV_SMS_GATEWAY key=STARTUP_HOLD_SECONDS value="300"
 /container/envs/add name=ENV_SMS_GATEWAY key=QUEUE_MAX_AGE_SECONDS value="3600"
 /container/envs/add name=ENV_SMS_GATEWAY key=QUEUE_MAX_MESSAGES value="100"
 /container/envs/add name=ENV_SMS_GATEWAY key=SEND_MAX_ATTEMPTS value="3"
@@ -200,9 +201,9 @@ The page shows:
 - The MikroTik SMS inbox. Receiving must be enabled on the router for messages to appear.
 - Settings that can be saved to `/config/settings.json`.
 
-The settings form covers the send interval, outgoing count/window, attempts, message age, queue size, history size and default pause state. Values saved in the config file override the matching ENV defaults. Connection details, IP restrictions, logging options and passwords remain in ENV.
+The settings form covers the send interval, outgoing count/window, startup hold, attempts, message age, queue size, history size and default pause state. Values saved in the config file override the matching ENV defaults. Connection details, IP restrictions, logging options and passwords remain in ENV.
 
-The pause/resume buttons only change the RAM state. Save the default pause setting if it should also apply after a router reboot. Changing settings does not clear counters or remove an existing cooldown. Queue and recent history are not written to the config file.
+The pause/resume buttons only change the RAM state. Save the default pause setting if it should also apply after a router reboot. Changing settings does not clear known counters. Changing the startup hold recalculates its deadline from the original RAM-state creation time; elapsed time counts, so shortening it can end an active hold immediately. Changing the counting period does not extend the startup hold. Existing config files without this setting use the ENV default (300 seconds unless overridden). Queue and recent history are not written to the config file.
 
 ## Environment variables
 
@@ -219,6 +220,7 @@ The pause/resume buttons only change the RAM state. Save the default pause setti
 |`RATE_LIMITS`|Incoming `IP_OR_CIDR:MAX/SECONDS` rules. Default `*:10/600`; `off` disables only the incoming limit|
 |`SEND_INTERVAL_SECONDS`|`10`: minimum seconds between outgoing attempts|
 |`SEND_LIMITS`|`20/3600`: maximum outgoing attempts per rolling window|
+|`STARTUP_HOLD_SECONDS`|`300`: startup wait after RAM loss, in seconds (0–86400), independent of the counting period|
 |`SEND_MAX_ATTEMPTS`|`3`: total attempts per message, including the first|
 |`QUEUE_MAX_AGE_SECONDS`|`3600`: maximum message age in seconds|
 |`QUEUE_MAX_MESSAGES`|`100`: maximum queue size|

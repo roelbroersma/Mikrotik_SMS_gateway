@@ -116,6 +116,8 @@ class HttpTests(unittest.TestCase):
         token = self.login()
         status, body, _ = self.client.request("/admin.php?action=snapshot")
         settings = json.loads(body)["settings"]
+        self.assertEqual(300, settings["startup_hold_seconds"])
+        settings["startup_hold_seconds"] = 120
         settings["paused"] = "true" if settings["paused"] else "false"
         invalid = {**settings, "interval_seconds": "-1", "csrf": token}
         status, _, _ = self.post("/admin.php?action=save_settings", invalid)
