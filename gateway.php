@@ -34,6 +34,7 @@ function gateway_settings_schema() {
         'interval_seconds' => array(5, 3600),
         'limit' => array(1, 1000),
         'window_seconds' => array(60, 86400),
+        'startup_hold_seconds' => array(0, 86400),
         'max_attempts' => array(1, 10),
         'max_age_seconds' => array(60, 604800),
         'max_queue' => array(1, 1000),
@@ -73,6 +74,7 @@ function gateway_config() {
         $config = gateway_validate_settings(array(
             'interval_seconds' => gateway_env('SEND_INTERVAL_SECONDS', '10'),
             'limit' => $matches[1], 'window_seconds' => $matches[2],
+            'startup_hold_seconds' => gateway_env('STARTUP_HOLD_SECONDS', '300'),
             'max_attempts' => gateway_env('SEND_MAX_ATTEMPTS', '3'),
             'max_age_seconds' => gateway_env('QUEUE_MAX_AGE_SECONDS', '3600'),
             'max_queue' => gateway_env('QUEUE_MAX_MESSAGES', '100'),
@@ -180,7 +182,7 @@ function gateway_new_state(array $config, $now) {
     return array(
         'version' => 1, 'boot_id' => gateway_boot_id(), 'clock_mono' => $now, 'origin_mono' => $now,
         'queue' => array(), 'history' => array(), 'reservations' => array(),
-        'last_attempt_mono' => null, 'cooldown_mono' => $now + $config['window_seconds'], 'max_window_seconds' => $config['window_seconds'],
+        'last_attempt_mono' => null, 'cooldown_mono' => $now + $config['startup_hold_seconds'], 'max_window_seconds' => $config['window_seconds'],
         'incoming' => array(), 'paused' => null
     );
 }
@@ -237,11 +239,10 @@ function gateway_with_state(callable $callback) {
             if ($state['boot_id'] !== gateway_boot_id() || $now < $state['clock_mono']) throw new GatewayException('RAM clock changed; sending has stopped.');
         }
         gateway_validate_state($state, $now);
-        if ($config['window_seconds'] > $state['max_window_seconds']) {
-            // This also covers changed Docker ENV or a settings file edited outside the admin page.
-            $state['cooldown_mono'] = max($state['cooldown_mono'], $state['origin_mono'] + $config['window_seconds']);
-            $state['max_window_seconds'] = $config['window_seconds'];
-        }
+        // Anchor the hold to the RAM lifetime, never to a worker or container restart.
+        // Recalculate for settings changes and v2.0 state without resetting known attempts.
+        $state['cooldown_mono'] = $state['origin_mono'] + $config['startup_hold_seconds'];
+        $state['max_window_seconds'] = max($state['max_window_seconds'], $config['window_seconds']);
         $state['clock_mono'] = $now;
         // Retain the full allowed settings horizon, so changing the window cannot reset a budget.
         $state['reservations'] = array_values(array_filter($state['reservations'], function ($ts) use ($now) { return is_numeric($ts) && $ts > $now - 86400; }));
@@ -361,9 +362,9 @@ function gateway_save_settings(array $input) {
         $saved = array_replace($config, $validated);
         $dir = dirname($file);
         if (!is_dir($dir) || !is_writable($dir)) throw new GatewayException('Configuration mount is not writable.');
-        // A larger window can reach into time before this RAM state existed. Protect that gap too.
-        $state['cooldown_mono'] = max($state['cooldown_mono'], $state['origin_mono'] + $saved['window_seconds']);
-        // Commit conservative RAM budget changes before making a more permissive setting visible.
+        // Apply the selected hold from the original RAM start, including elapsed time.
+        $state['cooldown_mono'] = $state['origin_mono'] + $saved['startup_hold_seconds'];
+        // Preserve the recorded attempts before publishing the changed settings.
         gateway_atomic_write(gateway_state_dir() . '/state.json', $state);
         gateway_atomic_write($file, $saved);
         // Saving unrelated settings must not silently cancel an emergency RAM pause.

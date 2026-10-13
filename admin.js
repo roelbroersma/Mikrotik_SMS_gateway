@@ -141,7 +141,7 @@ function tick() {
         state = 'hold';
     } else if (cooldown > 0) {
         title = 'Waiting after RAM reset · ' + duration(cooldown) + ' remaining';
-        detail = 'Previous send counts are unavailable. Waiting prevents exceeding the limit.';
+        detail = 'Previous send counts were lost. Waiting for the configured startup delay.';
         state = 'hold';
     } else if (snapshot.attempts_in_window >= snapshot.limit) {
         title = 'Sending limit reached';

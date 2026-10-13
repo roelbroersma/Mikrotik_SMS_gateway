@@ -235,7 +235,7 @@ try {
         }
         if ($action === 'save_settings') {
             $settings = [];
-            foreach (['interval_seconds', 'limit', 'window_seconds', 'max_attempts', 'max_age_seconds', 'max_queue', 'history_limit'] as $key) {
+            foreach (['interval_seconds', 'limit', 'window_seconds', 'startup_hold_seconds', 'max_attempts', 'max_age_seconds', 'max_queue', 'history_limit'] as $key) {
                 $value = admin_text($key);
                 if (!preg_match('/^[0-9]{1,9}$/D', $value)) {
                     admin_json(['error' => 'Enter whole numbers for all settings.'], 400);
@@ -360,6 +360,7 @@ header('Content-Type: text/html; charset=utf-8');
                     </fieldset>
                     <fieldset class="settings-group">
                         <legend>Startup</legend>
+                        <label class="setting-row"><span>Wait after RAM reset</span><input type="number" name="startup_hold_seconds" min="0" max="86400" step="1" required><span class="setting-unit">seconds</span></label>
                         <label class="checkbox-field"><input type="checkbox" name="paused"><span>Start paused after RAM reset</span></label>
                         <p class="group-note">Saving a changed pause setting also pauses or resumes sending now.</p>
                     </fieldset>
