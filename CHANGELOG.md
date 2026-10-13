@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.1.0 - 2026-10-13
 
 - Grouped and aligned admin settings, with shorter interface text.
 - Added a separate startup hold setting (`STARTUP_HOLD_SECONDS`), defaulting to 300 seconds. Saved settings can change an active hold without resetting known counters.
