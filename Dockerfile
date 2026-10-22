@@ -1,8 +1,8 @@
 # Alpine with PHP CLI (built-in server)
-# Pinned to Alpine 3.21
-FROM alpine:3.21
+# Pinned to Alpine 3.24 (Fixed PHP2Shell vulnerability)
+FROM alpine:3.24
 # The HTTP server and sender share a small, locked state file on tmpfs.
-RUN apk add --no-cache php82-cli php82-curl php82-session
+RUN apk add --no-cache php85-cli php85-curl php85-session
 
 # Set up document root and copy PHP script
 WORKDIR /var/www
